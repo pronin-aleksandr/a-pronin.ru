@@ -1,10 +1,30 @@
 {
   "https://bitobe.ru/team/4573/": {
     "hash": "2a29dfa79097ef1445e9a3c5085d2008",
-    "checked": "2026-05-18T20:12:53.468429"
+    "checked": "2026-05-18T20:18:36.233490"
   },
   "https://fgd.spb.ru/": {
     "hash": "2e6cd71b24a00967afbd1774e3c235ec",
-    "checked": "2026-05-18T20:12:55.595922"
+    "checked": "2026-05-18T20:18:37.614332"
+  },
+  "vk_sansei4": {
+    "hash": "dde2851d0eb8d47395e4aae4b3689529",
+    "checked": "2026-05-18T20:18:40.209590"
+  },
+  "vk_bitobe": {
+    "hash": "1eeb25edac2b0169b97f4331ee7d5436",
+    "checked": "2026-05-18T20:18:43.271469"
+  },
+  "vk_fgdrus": {
+    "hash": "d012ac3c2a73bce466b989098c3a4fd7",
+    "checked": "2026-05-18T20:18:45.772550"
+  },
+  "vk_fgdpskov": {
+    "hash": "76bae6690ef5caa9477e9e4e05162a81",
+    "checked": "2026-05-18T20:18:48.461478"
+  },
+  "vk_fgdspb": {
+    "hash": "b4fc98b26d3174760009319738ae84e6",
+    "checked": "2026-05-18T20:18:51.425801"
   }
 }
