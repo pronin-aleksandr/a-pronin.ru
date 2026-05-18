@@ -29,6 +29,7 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
           VK_TOKEN: ${{ secrets.VK_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: python monitor.py
 
       - name: Сохранение состояния
