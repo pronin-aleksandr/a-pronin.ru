@@ -1,0 +1,38 @@
+name: Мониторинг упоминаний
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # Каждый час
+  workflow_dispatch:       # Ручной запуск
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Python setup
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Установка библиотек
+        run: pip install requests beautifulsoup4
+
+      - name: Запуск мониторинга
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: python monitor.py
+
+      - name: Сохранение состояния
+        run: |
+          git config --local user.email "monitor@a-pronin.ru"
+          git config --local user.name "Pronin Monitor Bot"
+          git add data/state.json
+          git diff --staged --quiet || git commit -m "Обновление состояния мониторинга"
+          git push
