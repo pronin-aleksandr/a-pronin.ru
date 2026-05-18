@@ -57,124 +57,192 @@ def get_hash(text):
 def send_telegram(message):
     url = f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage'
     try:
-        requests.post(url, data={'chat_id': CHAT_ID, 'text': message, 'parse_mode': 'HTML'})
+        resp = requests.post(url, data={
+            'chat_id': CHAT_ID,
+            'text': message,
+            'parse_mode': 'HTML',
+            'disable_web_page_preview': False
+        })
+        print(f"  Telegram: {resp.status_code}")
     except Exception as e:
-        print(f"Ошибка отправки в Telegram: {e}")
+        print(f"Ошибка Telegram: {e}")
 
-def get_snippets(text, keywords, context=150):
-    """Возвращает фрагменты текста вокруг найденных ключевых слов"""
-    snippets = []
-    text_lower = text.lower()
-    for kw in keywords:
-        idx = text_lower.find(kw.lower())
-        if idx != -1:
-            start = max(0, idx - context)
-            end = min(len(text), idx + len(kw) + context)
-            snippet = text[start:end].strip()
-            # Убираем лишние пробелы
-            snippet = ' '.join(snippet.split())
-            if start > 0:
-                snippet = '...' + snippet
-            if end < len(text):
-                snippet = snippet + '...'
-            snippets.append((kw, snippet))
-    return snippets
+def get_snippet(text, keyword, context=120):
+    idx = text.lower().find(keyword.lower())
+    if idx == -1:
+        return None
+    start = max(0, idx - context)
+    end = min(len(text), idx + len(keyword) + context)
+    snippet = ' '.join(text[start:end].split())
+    if start > 0:
+        snippet = '...' + snippet
+    if end < len(text):
+        snippet += '...'
+    return snippet
 
-def get_vk_wall(screen_name):
+def get_vk_data(screen_name):
+    """Возвращает список постов с текстом, id и owner_id"""
     try:
+        # Определяем тип и ID
         r = requests.get('https://api.vk.com/method/utils.resolveScreenName', params={
             'screen_name': screen_name,
             'access_token': VK_TOKEN,
             'v': '5.131'
         }, timeout=10)
         data = r.json()
+        print(f"  resolveScreenName для {screen_name}: {data}")
+
         if 'error' in data or not data.get('response'):
-            print(f"  ВК: не удалось найти {screen_name}: {data.get('error', 'нет ответа')}")
             return None
+
         obj = data['response']
+        obj_type = obj['type']
         owner_id = obj['object_id']
-        if obj['type'] in ('group', 'page'):
+        if obj_type in ('group', 'page'):
             owner_id = -owner_id
 
+        # Получаем посты
         r2 = requests.get('https://api.vk.com/method/wall.get', params={
             'owner_id': owner_id,
             'count': 50,
+            'filter': 'all',
             'access_token': VK_TOKEN,
             'v': '5.131'
         }, timeout=10)
         wall = r2.json()
+
         if 'error' in wall:
-            print(f"  ВК ошибка wall.get для {screen_name}: {wall['error']}")
+            print(f"  wall.get ошибка: {wall['error']}")
             return None
+
         posts = wall.get('response', {}).get('items', [])
-        texts = [p.get('text', '') for p in posts if p.get('text', '').strip()]
-        print(f"  ВК: получено {len(texts)} постов для {screen_name}")
-        return '\n---\n'.join(texts) if texts else ''
+        print(f"  Получено постов: {len(posts)}")
+
+        result = []
+        for post in posts:
+            text = post.get('text', '').strip()
+            post_id = post.get('id')
+            if text and post_id:
+                link = f"https://vk.com/wall{owner_id}_{post_id}"
+                result.append({'text': text, 'link': link, 'id': post_id})
+
+        return result, owner_id
+
     except Exception as e:
         print(f"  Ошибка ВК для {screen_name}: {e}")
         return None
 
-def process(key, content, section, keywords, url, state):
-    current_hash = get_hash(content)
-    snippets = get_snippets(content, keywords)
+def process_web(page, state):
+    url = page['url']
+    section = page['section']
+    keywords = page['keywords']
+
+    html = fetch_page(url)
+    if not html:
+        return
+
+    text = extract_text(html)
+    current_hash = get_hash(text)
+
+    # Ищем все упоминания с фрагментами
+    found = []
+    for kw in keywords:
+        snippet = get_snippet(text, kw)
+        if snippet:
+            found.append((kw, snippet, url))
+
+    if url not in state:
+        state[url] = {'hash': current_hash, 'checked': datetime.now().isoformat()}
+        msg = f"🚀 <b>Первичное сканирование</b>\n📌 {section}\n\n"
+        if found:
+            for kw, snippet, link in found[:3]:
+                msg += f"🔑 <b>{kw}</b>\n<i>{snippet}</i>\n🔗 {link}\n\n"
+            msg += f"💡 Возможно стоит обновить раздел <b>{section}</b> на сайте."
+        else:
+            msg += f"🔗 {url}\nℹ️ Упоминаний не найдено — база сохранена."
+        send_telegram(msg)
+    elif current_hash != state[url].get('hash'):
+        state[url] = {'hash': current_hash, 'checked': datetime.now().isoformat()}
+        msg = f"🔔 <b>Изменение!</b>\n📌 {section}\n\n"
+        if found:
+            for kw, snippet, link in found[:3]:
+                msg += f"🔑 <b>{kw}</b>\n<i>{snippet}</i>\n🔗 {link}\n\n"
+            msg += f"💡 Обнови раздел <b>{section}</b> на a-pronin.ru"
+        else:
+            msg += f"🔗 {url}\nℹ️ Страница изменилась, упоминаний не найдено."
+        send_telegram(msg)
+    else:
+        state[url]['checked'] = datetime.now().isoformat()
+        print(f"  → Без изменений: {url}")
+
+def process_vk(page, state):
+    name = page['screen_name']
+    section = page['section']
+    keywords = page['keywords']
+    key = f"vk_{name}"
+
+    result = get_vk_data(name)
+    if result is None:
+        print(f"  → ВК: нет данных для {name}")
+        return
+
+    posts, owner_id = result
+    if not posts:
+        print(f"  → ВК: нет текстовых постов для {name}")
+        return
+
+    # Общий текст для хеша
+    all_text = '\n'.join(p['text'] for p in posts)
+    current_hash = get_hash(all_text)
+
+    # Ищем упоминания с прямыми ссылками на посты
+    found = []
+    for post in posts:
+        for kw in keywords:
+            if kw.lower() in post['text'].lower():
+                snippet = get_snippet(post['text'], kw, context=100)
+                if snippet:
+                    found.append((kw, snippet, post['link']))
+                break  # один раз на пост
 
     if key not in state:
         state[key] = {'hash': current_hash, 'checked': datetime.now().isoformat()}
-        msg = f"🚀 <b>Первичное сканирование</b>\n\n📌 {section}\n🔗 {url}\n\n"
-        if snippets:
-            msg += f"✅ Найдено {len(snippets)} упоминани(й):\n\n"
-            for kw, snippet in snippets[:3]:  # Показываем до 3 фрагментов
-                msg += f"🔑 <b>{kw}</b>:\n<i>{snippet}</i>\n\n"
-            msg += f"💡 Возможно, стоит обновить раздел <b>{section}</b> на сайте."
+        msg = f"🚀 <b>ВКонтакте — первичное сканирование</b>\n📌 {section}\n🔗 vk.com/{name}\n\n"
+        if found:
+            for kw, snippet, link in found[:3]:
+                msg += f"🔑 <b>{kw}</b>\n<i>{snippet}</i>\n🔗 {link}\n\n"
+            msg += f"💡 Возможно стоит обновить раздел <b>{section}</b> на сайте."
         else:
-            msg += "ℹ️ Упоминаний пока не найдено — база сохранена."
+            msg += f"ℹ️ Упоминаний не найдено в {len(posts)} постах — база сохранена."
         send_telegram(msg)
-        print(f"  → Первый запуск. Найдено фрагментов: {len(snippets)}")
-
-    else:
-        if current_hash != state[key].get('hash'):
-            state[key] = {'hash': current_hash, 'checked': datetime.now().isoformat()}
-            msg = f"🔔 <b>Изменение на странице!</b>\n\n📌 {section}\n🔗 {url}\n\n"
-            if snippets:
-                msg += f"✅ Найдено {len(snippets)} упоминани(й):\n\n"
-                for kw, snippet in snippets[:3]:
-                    msg += f"🔑 <b>{kw}</b>:\n<i>{snippet}</i>\n\n"
-                msg += f"💡 Рекомендую обновить раздел <b>{section}</b> на a-pronin.ru"
-            else:
-                msg += "ℹ️ Страница изменилась, упоминаний имени не найдено."
-            send_telegram(msg)
-            print(f"  → ИЗМЕНЕНИЕ! Фрагментов: {len(snippets)}")
+    elif current_hash != state[key].get('hash'):
+        state[key] = {'hash': current_hash, 'checked': datetime.now().isoformat()}
+        msg = f"🔔 <b>ВКонтакте — новый пост!</b>\n📌 {section}\n🔗 vk.com/{name}\n\n"
+        if found:
+            for kw, snippet, link in found[:3]:
+                msg += f"🔑 <b>{kw}</b>\n<i>{snippet}</i>\n🔗 {link}\n\n"
+            msg += f"💡 Обнови раздел <b>{section}</b> на a-pronin.ru"
         else:
-            state[key]['checked'] = datetime.now().isoformat()
-            print(f"  → Без изменений")
+            msg += "ℹ️ Новые посты без упоминаний твоего имени."
+        send_telegram(msg)
+    else:
+        state[key]['checked'] = datetime.now().isoformat()
+        print(f"  → Без изменений: vk.com/{name}")
 
 def run():
     state = load_state()
     print(f"Запуск: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
 
-    # Удаляем старые ключи чтобы принудительно переотправить с новым форматом
-    keys_to_reset = [k for k in state if state[k].get('hash')]
-    # (не сбрасываем — пусть работает в штатном режиме)
-
     for page in WEB_PAGES:
-        url = page['url']
-        print(f"Сайт: {url}")
-        html = fetch_page(url)
-        if html:
-            process(url, extract_text(html), page['section'], page['keywords'], url, state)
+        print(f"Сайт: {page['url']}")
+        process_web(page, state)
 
     if VK_TOKEN:
         for page in VK_PAGES:
-            name = page['screen_name']
-            url = f"https://vk.com/{name}"
-            print(f"ВКонтакте: {url}")
-            content = get_vk_wall(name)
-            if content is not None:
-                process(f"vk_{name}", content, page['section'], page['keywords'], url, state)
-            else:
-                print(f"  → Нет данных от VK API")
+            print(f"ВКонтакте: vk.com/{page['screen_name']}")
+            process_vk(page, state)
     else:
-        print("VK_TOKEN не задан — пропускаю ВКонтакте")
+        print("VK_TOKEN не задан")
 
     save_state(state)
     print("Готово.")
