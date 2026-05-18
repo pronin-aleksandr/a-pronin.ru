@@ -7,17 +7,21 @@ from datetime import datetime
 
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 CHAT_ID = os.environ.get('CHAT_ID')
+VK_TOKEN = os.environ.get('VK_TOKEN')
 
-PAGES = [
-    # Консалтинг
+# Обычные сайты
+WEB_PAGES = [
     {'url': 'https://bitobe.ru/team/4573/', 'section': 'Консалтинг', 'keywords': ['Пронин', 'Александр']},
-    {'url': 'https://vk.com/sansei4', 'section': 'Консалтинг/Дроны', 'keywords': ['Пронин', 'Александр', 'BITOBE', 'дрон', 'FPV', 'БПЛА']},
-    {'url': 'https://vk.com/bitobe', 'section': 'Консалтинг', 'keywords': ['Пронин', 'Александр']},
-    # Дроны
     {'url': 'https://fgd.spb.ru/', 'section': 'Дроны', 'keywords': ['Пронин', 'Александр']},
-    {'url': 'https://vk.com/fgdrus', 'section': 'Дроны', 'keywords': ['Пронин', 'Александр']},
-    {'url': 'https://vk.com/fgdpskov', 'section': 'Дроны', 'keywords': ['Пронин', 'Александр']},
-    {'url': 'https://vk.com/fgdspb', 'section': 'Дроны', 'keywords': ['Пронин', 'Александр']},
+]
+
+# ВКонтакте страницы (через API)
+VK_PAGES = [
+    {'screen_name': 'sansei4', 'section': 'Консалтинг/Дроны', 'keywords': ['Пронин', 'Александр', 'BITOBE', 'дрон', 'FPV', 'БПЛА']},
+    {'screen_name': 'bitobe', 'section': 'Консалтинг', 'keywords': ['Пронин', 'Александр']},
+    {'screen_name': 'fgdrus', 'section': 'Дроны', 'keywords': ['Пронин', 'Александр']},
+    {'screen_name': 'fgdpskov', 'section': 'Дроны', 'keywords': ['Пронин', 'Александр']},
+    {'screen_name': 'fgdspb', 'section': 'Дроны', 'keywords': ['Пронин', 'Александр']},
 ]
 
 STATE_FILE = 'data/state.json'
@@ -62,62 +66,91 @@ def send_telegram(message):
 def find_keywords(text, keywords):
     return [kw for kw in keywords if kw.lower() in text.lower()]
 
-def run():
+def get_vk_wall(screen_name):
+    try:
+        r = requests.get('https://api.vk.com/method/utils.resolveScreenName', params={
+            'screen_name': screen_name,
+            'access_token': VK_TOKEN,
+            'v': '5.199'
+        }, timeout=10)
+        data = r.json()
+        if 'error' in data or not data.get('response'):
+            print(f"  ВК: не удалось найти {screen_name}")
+            return None
+        obj = data['response']
+        owner_id = obj['object_id']
+        if obj['type'] == 'group':
+            owner_id = -owner_id
+        r2 = requests.get('https://api.vk.com/method/wall.get', params={
+            'owner_id': owner_id,
+            'count': 20,
+            'access_token': VK_TOKEN,
+            'v': '5.199'
+        }, timeout=10)
+        wall = r2.json()
+        if 'error' in wall:
+            print(f"  ВК ошибка для {screen_name}: {wall['error']}")
+            return None
+        posts = wall.get('response', {}).get('items', [])
+        return '\n'.join(p.get('text', '') for p in posts if p.get('text'))
+    except Exception as e:
+        print(f"  Ошибка ВК для {screen_name}: {e}")
+        return None
+
+def process(key, content, section, keywords, url):
     state = load_state()
-    print(f"Запуск мониторинга: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
+    current_hash = get_hash(content)
+    found_kw = find_keywords(content, keywords)
 
-    for page in PAGES:
-        url = page['url']
-        section = page['section']
-        keywords = page['keywords']
-
-        print(f"Проверяю: {url}")
-        html = fetch_page(url)
-        if not html:
-            continue
-
-        text = extract_text(html)
-        current_hash = get_hash(text)
-        found_kw = find_keywords(text, keywords)
-
-        if url not in state:
-            # Первый запуск — сохраняем базу
-            state[url] = {'hash': current_hash, 'checked': datetime.now().isoformat()}
-            msg = (
-                f"🚀 <b>Первичное сканирование завершено</b>\n\n"
-                f"📌 Раздел: {section}\n"
-                f"🔗 {url}\n"
-            )
-            if found_kw:
-                msg += f"✅ Найдены упоминания: <b>{', '.join(found_kw)}</b>\n"
-                msg += f"\n💡 Возможно, стоит добавить это в раздел <b>{section}</b> на сайте."
-            else:
-                msg += "ℹ️ Упоминаний пока не найдено — база сохранена."
-            send_telegram(msg)
-            print(f"  → Первый запуск, база сохранена. Найдено: {found_kw}")
-
+    if key not in state:
+        state[key] = {'hash': current_hash, 'checked': datetime.now().isoformat()}
+        msg = f"🚀 <b>Первичное сканирование завершено</b>\n\n📌 Раздел: {section}\n🔗 {url}\n"
+        if found_kw:
+            msg += f"✅ Найдены упоминания: <b>{', '.join(found_kw)}</b>\n"
+            msg += f"\n💡 Возможно, стоит добавить это в раздел <b>{section}</b> на сайте."
         else:
-            prev_hash = state[url].get('hash')
-            if current_hash != prev_hash:
-                # Страница изменилась!
-                state[url] = {'hash': current_hash, 'checked': datetime.now().isoformat()}
-                msg = (
-                    f"🔔 <b>Обнаружено изменение!</b>\n\n"
-                    f"📌 Раздел: {section}\n"
-                    f"🔗 {url}\n"
-                )
-                if found_kw:
-                    msg += f"\n✅ Упоминания: <b>{', '.join(found_kw)}</b>"
-                    msg += f"\n\n💡 Рекомендую обновить раздел <b>{section}</b> на сайте a-pronin.ru"
-                else:
-                    msg += "\nℹ️ Упоминаний твоего имени не найдено, но страница изменилась."
-                send_telegram(msg)
-                print(f"  → ИЗМЕНЕНИЕ! Ключевые слова: {found_kw}")
+            msg += "ℹ️ Упоминаний пока не найдено — база сохранена."
+        send_telegram(msg)
+        print(f"  → Первый запуск. Найдено: {found_kw}")
+    else:
+        if current_hash != state[key].get('hash'):
+            state[key] = {'hash': current_hash, 'checked': datetime.now().isoformat()}
+            msg = f"🔔 <b>Обнаружено изменение!</b>\n\n📌 Раздел: {section}\n🔗 {url}\n"
+            if found_kw:
+                msg += f"\n✅ Упоминания: <b>{', '.join(found_kw)}</b>"
+                msg += f"\n\n💡 Рекомендую обновить раздел <b>{section}</b> на сайте a-pronin.ru"
             else:
-                state[url]['checked'] = datetime.now().isoformat()
-                print(f"  → Без изменений")
-
+                msg += "\nℹ️ Страница изменилась, упоминаний имени не найдено."
+            send_telegram(msg)
+            print(f"  → ИЗМЕНЕНИЕ! {found_kw}")
+        else:
+            state[key]['checked'] = datetime.now().isoformat()
+            print(f"  → Без изменений")
     save_state(state)
+
+def run():
+    print(f"Запуск: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
+
+    for page in WEB_PAGES:
+        url = page['url']
+        print(f"Сайт: {url}")
+        html = fetch_page(url)
+        if html:
+            process(url, extract_text(html), page['section'], page['keywords'], url)
+
+    if VK_TOKEN:
+        for page in VK_PAGES:
+            name = page['screen_name']
+            url = f"https://vk.com/{name}"
+            print(f"ВКонтакте: {url}")
+            content = get_vk_wall(name)
+            if content:
+                process(f"vk_{name}", content, page['section'], page['keywords'], url)
+            else:
+                print(f"  → Нет данных")
+    else:
+        print("VK_TOKEN не задан")
+
     print("Готово.")
 
 if __name__ == '__main__':
