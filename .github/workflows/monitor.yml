@@ -4,7 +4,8 @@ on:
   schedule:
     - cron: '0 * * * *'  # Каждый час
   workflow_dispatch:       # Ручной запуск
-
+permissions:
+  contents: write
 jobs:
   monitor:
     runs-on: ubuntu-latest
