@@ -245,6 +245,7 @@ def claude(prompt, max_tokens=2000):
         print("GEMINI_API_KEY не задан")
         return None
     try:
+        print(f"Gemini: отправляю запрос ({len(prompt)} символов)...")
         r = requests.post(
             f'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_KEY}',
             headers={'content-type': 'application/json'},
@@ -334,9 +335,12 @@ def queue_len():
 
 def analyze(text, link, source):
     """Claude проверяет: есть ли на сайте, куда добавить."""
+    print("analyze: читаю index.html...")
     html, _ = gh_read(INDEX_FILE)
     if not html:
+        print("analyze: не удалось прочитать index.html")
         return None
+    print(f"analyze: index.html получен ({len(html)} байт), вызываю Gemini...")
 
     soup = BeautifulSoup(html, 'html.parser')
     for tag in soup(['script', 'style']):
