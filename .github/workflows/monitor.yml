@@ -1,0 +1,41 @@
+name: Monitor
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4 SpeechRecognition pydub
+
+      - name: Run monitor
+        env:
+          TELEGRAM_TOKEN:    ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID:           ${{ secrets.CHAT_ID }}
+          VK_TOKEN:          ${{ secrets.VK_TOKEN }}
+          GITHUB_TOKEN:      ${{ secrets.GH_PAT }}
+          GEMINI_API_KEY:     ${{ secrets.GEMINI_API_KEY }}
+        run: python monitor.py
+
+      - name: Commit state
+        run: |
+          git config user.name "Monitor Bot"
+          git config user.email "bot@a-pronin.ru"
+          git add data/
+          git diff --staged --quiet || git commit -m "Monitor: обновление состояния"
+          git push
