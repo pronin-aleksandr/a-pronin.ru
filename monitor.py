@@ -213,9 +213,9 @@ def gh_read(filepath):
         return None, None
     sha = r.json().get('sha')
 
-    # Читаем содержимое через raw URL (без лимита на размер)
+    # Читаем содержимое через raw URL — файл публичный, токен не нужен
     raw_url = f'https://raw.githubusercontent.com/{GITHUB_REPO}/main/{filepath}'
-    r2 = requests.get(raw_url, headers={'Authorization': f'token {GITHUB_TOKEN}'}, timeout=30)
+    r2 = requests.get(raw_url, timeout=30)
     if r2.status_code != 200:
         print(f"gh_read raw ошибка {r2.status_code}")
         return None, None
