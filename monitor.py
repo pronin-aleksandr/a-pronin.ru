@@ -198,29 +198,31 @@ def transcribe_voice(file_id):
 # ── GitHub ──────────────────────────────────────────────────
 
 def gh_read(filepath):
+    """Читает файл из GitHub — сначала SHA через API, контент через raw URL."""
     headers = {
         'Authorization': f'token {GITHUB_TOKEN}',
         'Accept': 'application/vnd.github.v3+json'
     }
+    # Получаем SHA через API
     r = requests.get(
         f'https://api.github.com/repos/{GITHUB_REPO}/contents/{filepath}',
         headers=headers, timeout=15
     )
-    print(f"gh_read {filepath}: статус {r.status_code}")
     if r.status_code != 200:
-        print(f"gh_read ошибка: {r.text[:200]}")
-    if r.status_code == 200:
-        d = r.json()
-        # GitHub возвращает base64 с переносами строк — убираем их
-        content_b64 = d['content'].replace('\n', '').replace(' ', '')
-        try:
-            content = base64.b64decode(content_b64).decode('utf-8')
-            print(f"gh_read: декодировано {len(content)} символов")
-            return content, d['sha']
-        except Exception as e:
-            print(f"gh_read decode error: {e}")
-            return None, None
-    return None, None
+        print(f"gh_read API ошибка {r.status_code}: {r.text[:200]}")
+        return None, None
+    sha = r.json().get('sha')
+
+    # Читаем содержимое через raw URL (без лимита на размер)
+    raw_url = f'https://raw.githubusercontent.com/{GITHUB_REPO}/main/{filepath}'
+    r2 = requests.get(raw_url, headers={'Authorization': f'token {GITHUB_TOKEN}'}, timeout=30)
+    if r2.status_code != 200:
+        print(f"gh_read raw ошибка {r2.status_code}")
+        return None, None
+
+    content = r2.text
+    print(f"gh_read: получено {len(content)} символов")
+    return content, sha
 
 def gh_write(filepath, content, message, sha=None):
     headers = {
