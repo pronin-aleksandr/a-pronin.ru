@@ -246,7 +246,7 @@ def claude(prompt, max_tokens=2000):
         return None
     try:
         r = requests.post(
-            f'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}',
+            f'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_KEY}',
             headers={'content-type': 'application/json'},
             json={
                 'contents': [{'parts': [{'text': prompt}]}],
@@ -258,7 +258,32 @@ def claude(prompt, max_tokens=2000):
             timeout=120
         )
         data = r.json()
-        return data['candidates'][0]['content']['parts'][0]['text']
+        print(f"Gemini статус: {r.status_code}")
+
+        # Ошибка API
+        if 'error' in data:
+            print(f"Gemini API ошибка: {data['error']}")
+            return None
+
+        # Safety block или пустой ответ
+        candidates = data.get('candidates', [])
+        if not candidates:
+            print(f"Gemini: нет кандидатов. Ответ: {data}")
+            return None
+
+        candidate = candidates[0]
+        finish_reason = candidate.get('finishReason', '')
+        if finish_reason == 'SAFETY':
+            print(f"Gemini: заблокировано safety filters")
+            return None
+
+        parts = candidate.get('content', {}).get('parts', [])
+        if not parts:
+            print(f"Gemini: пустой content. Кандидат: {candidate}")
+            return None
+
+        return parts[0]['text']
+
     except Exception as e:
         print(f"Gemini ошибка: {e}")
         return None
