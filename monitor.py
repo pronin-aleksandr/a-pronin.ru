@@ -211,7 +211,15 @@ def gh_read(filepath):
         print(f"gh_read ошибка: {r.text[:200]}")
     if r.status_code == 200:
         d = r.json()
-        return base64.b64decode(d['content']).decode('utf-8'), d['sha']
+        # GitHub возвращает base64 с переносами строк — убираем их
+        content_b64 = d['content'].replace('\n', '').replace(' ', '')
+        try:
+            content = base64.b64decode(content_b64).decode('utf-8')
+            print(f"gh_read: декодировано {len(content)} символов")
+            return content, d['sha']
+        except Exception as e:
+            print(f"gh_read decode error: {e}")
+            return None, None
     return None, None
 
 def gh_write(filepath, content, message, sha=None):
