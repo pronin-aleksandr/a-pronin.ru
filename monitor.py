@@ -206,6 +206,9 @@ def gh_read(filepath):
         f'https://api.github.com/repos/{GITHUB_REPO}/contents/{filepath}',
         headers=headers, timeout=15
     )
+    print(f"gh_read {filepath}: статус {r.status_code}")
+    if r.status_code != 200:
+        print(f"gh_read ошибка: {r.text[:200]}")
     if r.status_code == 200:
         d = r.json()
         return base64.b64decode(d['content']).decode('utf-8'), d['sha']
