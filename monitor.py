@@ -346,52 +346,87 @@ def queue_len():
 
 # ── Анализ материала ────────────────────────────────────────
 
-def analyze(text, link, source):
-    """Claude проверяет: есть ли на сайте, куда добавить."""
-    print("analyze: читаю index.html...")
+ANALYZED_FILE = 'data/analyzed.json'
+
+def get_site_summary():
+    """Читает сайт и возвращает краткое текстовое содержимое."""
     html, _ = gh_read(INDEX_FILE)
     if not html:
-        print("analyze: не удалось прочитать index.html")
-        return None
-    print(f"analyze: index.html получен ({len(html)} байт), вызываю Gemini...")
-
+        print("get_site_summary: не удалось прочитать index.html")
+        return None, None
     soup = BeautifulSoup(html, 'html.parser')
     for tag in soup(['script', 'style']):
         tag.decompose()
-    site_text = soup.get_text(separator=' ', strip=True)[:20000]
+    site_text = soup.get_text(separator=' ', strip=True)[:5000]
+    _, sha = gh_read(INDEX_FILE)
+    return site_text, sha
+
+def analyze_batch(items):
+    """Анализирует пакет материалов одним запросом к Gemini.
+    
+    items: список {'text', 'link', 'source'}
+    Возвращает список результатов или None при ошибке (429 и т.д.)
+    """
+    print(f"analyze_batch: анализирую {len(items)} материалов...")
+    site_text, _ = get_site_summary()
+    if not site_text:
+        return None
+
+    items_str = ''
+    for i, item in enumerate(items):
+        items_str += f"""
+Материал {i+1}:
+  Источник: {item['source']}
+  Текст: {item['text'][:500]}
+  Ссылка: {item.get('link') or 'нет'}
+"""
 
     resp = claude(f"""Ты помощник по управлению сайтом Александра Пронина (a-pronin.ru).
 
 Структура сайта:
-- Консалтинг (BITOBE): профиль, новости, мероприятия
+- Консалтинг (BITOBE): профиль, новости, мероприятия  
 - Дроны/FPV (ФГД СПб): профиль, новости, мероприятия
 
 Текущий контент сайта:
 {site_text}
 
-Новый материал:
-Источник: {source}
-Текст: {text[:2000]}
-Ссылка: {link or 'нет'}
+Проанализируй каждый материал: есть ли он уже на сайте, куда добавить.
 
-Задача:
-1. Проверь — есть ли уже этот материал на сайте?
-2. Если нет — определи куда лучше добавить. Важный материал можно добавить в несколько мест.
+{items_str}
 
-Ответь СТРОГО в JSON (без markdown):
-{{
-  "found_on_site": true или false,
-  "reason": "объяснение на русском (1-2 предложения)",
-  "suggestion": "предложение для пользователя: куда и почему разместить",
-  "placements": []
-}}
+Ответь СТРОГО в JSON-массиве (без markdown), по одному объекту на каждый материал:
+[
+  {{
+    "index": 1,
+    "found_on_site": true или false,
+    "reason": "объяснение 1-2 предложения",
+    "suggestion": "куда и почему разместить",
+    "placements": []
+  }}
+]
 
-Возможные значения placements:
-"news-consulting", "news-drone", "events-consulting", "events-drone", "profile-consulting", "profile-drone"
+Возможные placements: "news-consulting", "news-drone", "events-consulting", "events-drone", "profile-consulting", "profile-drone"
+Если found_on_site=true — placements пустой массив.""", max_tokens=2000)
 
-Если found_on_site=true — placements пустой массив.""", max_tokens=1000)
+    if not resp:
+        # None означает ошибку API (429 или другую) — не теряем материалы
+        print("analyze_batch: Gemini не ответил — материалы остаются в очереди")
+        return None
 
-    return parse_json(resp) if resp else None
+    results = parse_json(resp)
+    if not results or not isinstance(results, list):
+        print(f"analyze_batch: неверный формат ответа: {resp[:200]}")
+        return None
+
+    print(f"analyze_batch: получено {len(results)} результатов")
+    return results
+
+def analyze(text, link, source):
+    """Обёртка для одиночного анализа (используется при ручном вводе)."""
+    results = analyze_batch([{'text': text, 'link': link, 'source': source}])
+    if results is None:
+        return None
+    return results[0] if results else None
 
 
 # ── Генерация обновлённого HTML ─────────────────────────────
@@ -772,6 +807,104 @@ def process_vk(page, state):
         print(f"  ок: vk.com/{name}")
 
 
+# ── Пакетная обработка очереди ──────────────────────────────
+
+def process_queue_batch():
+    """Анализирует всю очередь одним запросом, сохраняет результаты,
+    показывает первый материал пользователю."""
+
+    # Проверяем — есть ли уже проанализированные материалы
+    analyzed = load_json(ANALYZED_FILE, [])
+    if analyzed:
+        # Уже есть готовые — показываем первый
+        print(f"process_queue_batch: есть {len(analyzed)} проанализированных, показываю первый")
+        item = analyzed.pop(0)
+        save_json(ANALYZED_FILE, analyzed)
+        if item.get('skip'):
+            # Уже на сайте — берём следующий
+            process_queue_batch()
+            return
+        propose_one_analyzed(item)
+        return
+
+    # Берём всё из очереди
+    queue = load_json(QUEUE_FILE, [])
+    if not queue:
+        print("process_queue_batch: очередь пуста")
+        return
+
+    print(f"process_queue_batch: в очереди {len(queue)} материалов")
+
+    # Анализируем пакетом (максимум 5 за раз)
+    batch = queue[:5]
+    rest  = queue[5:]
+
+    results = analyze_batch(batch)
+
+    if results is None:
+        # Gemini недоступен (429) — оставляем очередь как есть, попробуем в следующий раз
+        print("process_queue_batch: Gemini недоступен, очередь сохранена для следующего запуска")
+        tg("⏳ Gemini временно недоступен (лимит запросов). Повторю в следующем запуске.")
+        return
+
+    # Сохраняем остаток очереди
+    save_json(QUEUE_FILE, rest)
+
+    # Формируем список проанализированных
+    analyzed_items = []
+    for i, result in enumerate(results):
+        item = batch[i] if i < len(batch) else {}
+        if result.get('found_on_site'):
+            analyzed_items.append({**item, **result, 'skip': True})
+        elif result.get('placements'):
+            analyzed_items.append({**item, **result, 'skip': False,
+                                    'date': datetime.now().strftime('%d %b %Y')})
+
+    if not analyzed_items:
+        print("process_queue_batch: все материалы уже на сайте")
+        # Если ещё есть в очереди — обрабатываем следующий пакет
+        if rest:
+            process_queue_batch()
+        return
+
+    # Показываем первый, остальные сохраняем
+    first = analyzed_items[0]
+    save_json(ANALYZED_FILE, analyzed_items[1:])
+
+    if first.get('skip'):
+        process_queue_batch()
+    else:
+        propose_one_analyzed(first)
+
+
+def propose_one_analyzed(item):
+    """Отправляет пользователю предложение по уже проанализированному материалу."""
+    text      = item.get('text', '')
+    link      = item.get('link', '')
+    source    = item.get('source', '')
+    placements = item.get('placements', [])
+    analyzed  = load_json(ANALYZED_FILE, [])
+    q_len     = queue_len() + len(analyzed)
+
+    places = '\n'.join(f"• {PLACEMENT_LABELS.get(p,p)}" for p in placements)
+    queue_note = f"\n\n📋 <i>Ещё в очереди: {q_len}</i>" if q_len > 0 else ""
+
+    tg(
+        f"🤖 <b>Клод предлагает</b>\n\n"
+        f"📌 <b>Источник:</b> {source}\n"
+        f"📝 <b>Материал:</b> {text[:300]}{'...' if len(text)>300 else ''}\n"
+        + (f"🔗 <b>Ссылка:</b> {link}\n" if link else "") +
+        f"\n💡 <b>Предложение:</b>\n{item.get('suggestion','')}\n\n"
+        f"<b>Разместить в:</b>\n{places}\n\n"
+        f"✅ <b>ДА</b>  |  ❌ <b>НЕТ</b>  |  ✏️ <i>или надиктуй правки</i>"
+        + queue_note
+    )
+
+    _, prev_sha = gh_read(INDEX_FILE)
+    pending_save(text, link, item.get('date', datetime.now().strftime('%d %b %Y')),
+                 source, item, prev_sha)
+
+
 # ── Главная ─────────────────────────────────────────────────
 
 def run():
@@ -800,11 +933,9 @@ def run():
 
         save_json(STATE_FILE, state)
 
-        # 3. Если pending нет — берём первый из очереди
+        # 3. Пакетный анализ очереди и показ первого результата
         if pending_load() is None:
-            item = queue_pop()
-            if item:
-                propose_one(item)
+            process_queue_batch()
 
     print("=== Готово ===")
 
