@@ -1,0 +1,72 @@
+{
+  "https://bitobe.ru/team/4573/": {
+    "hash": "41cd0cb322546853e1ee5a1791e46231",
+    "checked": "2026-05-20T19:42:56.919007"
+  },
+  "https://fgd.spb.ru/": {
+    "hash": "2e6cd71b24a00967afbd1774e3c235ec",
+    "checked": "2026-05-20T19:42:58.202387"
+  },
+  "vk_sansei4": {
+    "hash": "dde2851d0eb8d47395e4aae4b3689529",
+    "checked": "2026-05-20T19:43:00.420784",
+    "seen_links": [
+      "https://vk.com/wall93680_2951",
+      "https://vk.com/wall93680_3164",
+      "https://vk.com/wall93680_3160",
+      "https://vk.com/wall93680_3155",
+      "https://vk.com/wall93680_3147",
+      "https://vk.com/wall93680_3128",
+      "https://vk.com/wall93680_3125",
+      "https://vk.com/wall93680_3121",
+      "https://vk.com/wall93680_3113",
+      "https://vk.com/wall93680_3110",
+      "https://vk.com/wall93680_3106",
+      "https://vk.com/wall93680_3099",
+      "https://vk.com/wall93680_3091",
+      "https://vk.com/wall93680_3081",
+      "https://vk.com/wall93680_3080",
+      "https://vk.com/wall93680_3076",
+      "https://vk.com/wall93680_3075",
+      "https://vk.com/wall93680_3071",
+      "https://vk.com/wall93680_3070",
+      "https://vk.com/wall93680_3065",
+      "https://vk.com/wall93680_3060"
+    ]
+  },
+  "vk_bitobe": {
+    "hash": "671a1360d9776c7cc58535448ecf7d3e",
+    "checked": "2026-05-20T19:43:02.615437",
+    "seen_links": [
+      "https://vk.com/wall-200393_2316",
+      "https://vk.com/wall-200393_2308",
+      "https://vk.com/wall-200393_2301",
+      "https://vk.com/wall-200393_2289",
+      "https://vk.com/wall-200393_2288",
+      "https://vk.com/wall-200393_2277",
+      "https://vk.com/wall-200393_2276",
+      "https://vk.com/wall-200393_2273",
+      "https://vk.com/wall-200393_2268"
+    ]
+  },
+  "vk_fgdrus": {
+    "hash": "a17af61601e1f0d491ad84755860d9ce",
+    "checked": "2026-05-20T19:43:04.671105",
+    "seen_links": []
+  },
+  "vk_fgdpskov": {
+    "hash": "76bae6690ef5caa9477e9e4e05162a81",
+    "checked": "2026-05-20T19:43:06.593124",
+    "seen_links": [
+      "https://vk.com/wall-145367898_454",
+      "https://vk.com/wall-145367898_450",
+      "https://vk.com/wall-145367898_438",
+      "https://vk.com/wall-145367898_423"
+    ]
+  },
+  "vk_fgdspb": {
+    "hash": "11091ec6ebe1ac1cfbc7f5f3e60787e5",
+    "checked": "2026-05-20T19:43:08.514875",
+    "seen_links": []
+  }
+}
