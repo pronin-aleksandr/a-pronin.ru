@@ -347,19 +347,34 @@ def queue_len():
 # ── Анализ материала ────────────────────────────────────────
 
 ANALYZED_FILE = 'data/analyzed.json'
+NEWS_FILE     = 'data/news.json'
+EVENTS_FILE   = 'data/events.json'
 
-def get_site_summary():
-    """Читает сайт и возвращает краткое текстовое содержимое."""
-    html, _ = gh_read(INDEX_FILE)
-    if not html:
-        print("get_site_summary: не удалось прочитать index.html")
-        return None, None
-    soup = BeautifulSoup(html, 'html.parser')
-    for tag in soup(['script', 'style']):
-        tag.decompose()
-    site_text = soup.get_text(separator=' ', strip=True)[:5000]
-    _, sha = gh_read(INDEX_FILE)
-    return site_text, sha
+def get_existing_content():
+    """Читает news.json и events.json — только заголовки для сравнения."""
+    news_raw,   _ = gh_read(NEWS_FILE)
+    events_raw, _ = gh_read(EVENTS_FILE)
+
+    lines = ["Текущие новости и мероприятия на сайте:"]
+
+    if news_raw:
+        try:
+            news = json.loads(news_raw)
+            for section, items in news.items():
+                for item in items:
+                    lines.append(f"[Новость/{section}] {item.get('date','')} — {item.get('title','')}")
+        except: pass
+
+    if events_raw:
+        try:
+            events = json.loads(events_raw)
+            for section, types in events.items():
+                for etype, items in types.items():
+                    for item in items:
+                        lines.append(f"[Мероприятие/{section}/{etype}] {item.get('date','')} — {item.get('title','')}")
+        except: pass
+
+    return "\n".join(lines)
 
 def analyze_batch(items):
     """Анализирует пакет материалов одним запросом к Gemini.
@@ -368,9 +383,7 @@ def analyze_batch(items):
     Возвращает список результатов или None при ошибке (429 и т.д.)
     """
     print(f"analyze_batch: анализирую {len(items)} материалов...")
-    site_text, _ = get_site_summary()
-    if not site_text:
-        return None
+    site_text = get_existing_content()
 
     items_str = ''
     for i, item in enumerate(items):
@@ -431,36 +444,59 @@ def analyze(text, link, source):
 
 # ── Генерация обновлённого HTML ─────────────────────────────
 
-def generate_edit(text, link, date, placements, user_comment=''):
-    """Claude вносит правки в index.html и возвращает обновлённый файл."""
-    html, sha = gh_read(INDEX_FILE)
-    if not html:
-        return None, None
+def apply_json_edit(text, link, date, placements, user_comment=''):
+    """Добавляет материал в news.json или events.json — без редактирования HTML."""
+    success = True
 
-    extra = f"\nДополнительные инструкции: {user_comment}" if user_comment else ""
-    places_str = ', '.join(PLACEMENT_LABELS.get(p, p) for p in placements)
+    for placement in placements:
+        if placement.startswith('news-'):
+            section = placement.replace('news-', '')
+            news_raw, sha = gh_read(NEWS_FILE)
+            news = json.loads(news_raw) if news_raw else {'consulting': [], 'drone': []}
+            if section not in news:
+                news[section] = []
+            # Определяем source из user_comment или текста
+            source = user_comment if user_comment else ''
+            new_item = {
+                'id': int(datetime.now().timestamp()),
+                'section': section,
+                'source': source,
+                'date': date,
+                'title': text[:100],
+                'text': text[:300],
+                'link': link or ''
+            }
+            news[section].insert(0, new_item)
+            ok = gh_write(NEWS_FILE, json.dumps(news, ensure_ascii=False, indent=2),
+                         f"Новость: {text[:50]}", sha=sha)
+            if not ok: success = False
 
-    resp = claude(f"""Ты редактор HTML-сайта Александра Пронина (a-pronin.ru).
+        elif placement.startswith('events-'):
+            section = placement.replace('events-', '')
+            events_raw, sha = gh_read(EVENTS_FILE)
+            events = json.loads(events_raw) if events_raw else {
+                'consulting': {'upcoming': [], 'past': []},
+                'drone': {'upcoming': [], 'past': []}
+            }
+            if section not in events:
+                events[section] = {'upcoming': [], 'past': []}
+            # Определяем upcoming или past по дате
+            etype = 'upcoming'
+            new_item = {
+                'id': int(datetime.now().timestamp()),
+                'section': section,
+                'type': etype,
+                'date': date,
+                'title': text[:100],
+                'text': text[:300],
+                'link': link or ''
+            }
+            events[section][etype].insert(0, new_item)
+            ok = gh_write(EVENTS_FILE, json.dumps(events, ensure_ascii=False, indent=2),
+                         f"Мероприятие: {text[:50]}", sha=sha)
+            if not ok: success = False
 
-Добавь следующий материал в разделы: {places_str}
-Текст материала: {text[:1500]}
-Ссылка: {link or 'нет'}
-Дата: {date}{extra}
-
-Правила:
-- Добавляй в начало соответствующего списка (самая свежая запись первой)
-- Используй существующие CSS-классы сайта (news-item, event-item и т.д.)
-- Не меняй ничего кроме нужных разделов
-- Для новостей: добавляй в year-group с текущим годом; если года нет — создай его
-
-Текущий index.html:
-{html}
-
-Верни ТОЛЬКО полный обновлённый HTML без пояснений и без markdown-блоков.""",
-        max_tokens=32000
-    )
-
-    return resp, sha
+    return success
 
 
 # ── Pending ─────────────────────────────────────────────────
@@ -537,51 +573,63 @@ def propose_one(item):
 # ── Подтверждение и запись ───────────────────────────────────
 
 def do_confirm(pending, user_comment=''):
-    tg("⚙️ <b>Вношу изменения на сайт...</b>")
+    tg("⚙️ <b>Добавляю в базу сайта...</b>")
 
-    prev_html, _ = gh_read(INDEX_FILE)
-    new_html, sha = generate_edit(
+    ok = apply_json_edit(
         pending['text'], pending['link'], pending['date'],
         pending['analysis']['placements'], user_comment
     )
 
-    if not new_html or len(new_html) < 5000:
-        tg("❌ Ошибка генерации HTML. Попробуй ещё раз.")
-        return
-
-    ok = gh_write(INDEX_FILE, new_html, f"AI: {pending['text'][:60]}", sha=sha)
-
     if ok:
-        save_json(PENDING_FILE, {
-            **pending,
-            'status': 'done',
-            'prev_html_b64': base64.b64encode(
-                prev_html.encode('utf-8')).decode('utf-8') if prev_html else None
-        })
-        q_len = queue_len()
+        save_json(PENDING_FILE, {**pending, 'status': 'done'})
+        analyzed = load_json(ANALYZED_FILE, [])
+        q_len = queue_len() + len(analyzed)
         queue_note = f"\n\n📋 Ещё в очереди: {q_len}" if q_len > 0 else ""
         tg(
-            f"✅ <b>Сайт обновлён!</b>\n\n"
+            f"✅ <b>Готово! Сайт обновлён.</b>\n\n"
             f"🔗 {SITE_URL}\n\n"
             f"Если что-то не так — ответь <b>ОТКАТ</b>"
             + queue_note
         )
+        # Показываем следующий из проанализированных
+        if analyzed:
+            next_item = analyzed.pop(0)
+            save_json(ANALYZED_FILE, analyzed)
+            propose_one_analyzed(next_item)
     else:
         tg("❌ Ошибка при записи в GitHub.")
 
 
 def do_rollback(pending):
-    b64 = pending.get('prev_html_b64')
-    if not b64:
-        tg("⚠️ Нет сохранённой версии для отката.")
-        pending_clear()
-        return
-
+    """Откатывает последнее добавление — удаляет первый элемент из нужного JSON."""
     tg("🔄 <b>Откатываю...</b>")
-    prev_html = base64.b64decode(b64.encode('utf-8')).decode('utf-8')
-    ok = gh_write(INDEX_FILE, prev_html, 'Rollback: отмена изменений AI')
+    placements = pending.get('analysis', {}).get('placements', [])
+    success = True
 
-    if ok:
+    for placement in placements:
+        if placement.startswith('news-'):
+            section = placement.replace('news-', '')
+            news_raw, sha = gh_read(NEWS_FILE)
+            if news_raw:
+                news = json.loads(news_raw)
+                if news.get(section):
+                    news[section].pop(0)  # Удаляем первый (последний добавленный)
+                    ok = gh_write(NEWS_FILE, json.dumps(news, ensure_ascii=False, indent=2),
+                                 'Rollback: отмена новости', sha=sha)
+                    if not ok: success = False
+
+        elif placement.startswith('events-'):
+            section = placement.replace('events-', '')
+            events_raw, sha = gh_read(EVENTS_FILE)
+            if events_raw:
+                events = json.loads(events_raw)
+                if events.get(section, {}).get('upcoming'):
+                    events[section]['upcoming'].pop(0)
+                    ok = gh_write(EVENTS_FILE, json.dumps(events, ensure_ascii=False, indent=2),
+                                 'Rollback: отмена мероприятия', sha=sha)
+                    if not ok: success = False
+
+    if success:
         pending_clear()
         tg(f"✅ <b>Откат выполнен!</b>\n🔗 {SITE_URL}")
     else:
