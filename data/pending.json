@@ -1,0 +1,23 @@
+{
+  "text": "У старшего методолога моей команды вышла статья, размести в новостях консалтинга",
+  "link": "https://vk.com/@bitobe-razvitie-rukovoditelei-dostizhenie-dolgosrochnogo-effekta",
+  "date": "21 May 2026",
+  "source": "Вручную от пользователя",
+  "analysis": {
+    "index": 1,
+    "found_on_site": false,
+    "reason": "Материал отсутствует в текущем списке новостей консалтинга.",
+    "suggestion": "Разместить в разделе новостей консалтинга, так как это экспертная статья от методолога BITOBE.",
+    "placements": [
+      "news-consulting"
+    ],
+    "title": "Развитие руководителей: достижение долгосрочного эффекта",
+    "description": "Статья о принципах андрагогики и важности системного подхода в обучении руководителей для достижения долгосрочных результатов.",
+    "event_day": "27",
+    "event_month": "фев",
+    "event_year": "2026"
+  },
+  "prev_sha": "1c14ba2dde236d26fa9b6b854c8fe0c0fb2a7ffd",
+  "status": "waiting_confirm",
+  "created": "2026-05-21T14:22:57.669948"
+}
