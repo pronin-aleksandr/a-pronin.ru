@@ -128,6 +128,15 @@
   "drone": {
     "upcoming": [
       {
+        "id": 1779356872,
+        "section": "drone",
+        "type": "upcoming",
+        "date": "21 May 2026",
+        "title": "Добавь вот эту новость в мероприятия \nЯ был участником",
+        "text": "Добавь вот эту новость в мероприятия \nЯ был участником",
+        "link": "https://vk.ru/wall-200393_2313"
+      },
+      {
         "id": 1,
         "section": "drone",
         "type": "upcoming",
