@@ -734,6 +734,7 @@ def process_commands():
                 continue
             else:
                 pending_clear()
+                tg("✅ Принято.")
                 # Берём следующий из очереди
                 next_item = queue_pop()
                 if next_item:
@@ -775,7 +776,7 @@ def process_commands():
             link  = urls[0] if urls else ''
             clean = text.replace(link, '').strip() if link else text
 
-            if len(clean) > 15:
+            if len(clean) > 50:
                 # Если сейчас нет pending — анализируем сразу
                 # Иначе добавляем в очередь
                 if pending_load() is None:
@@ -784,7 +785,7 @@ def process_commands():
                     queue_add(clean, link, 'Вручную')
                     tg(f"📋 Добавлено в очередь. Сначала ответь на текущее предложение.")
             else:
-                tg("⚠️ Слишком короткий текст. Отправь описание (и ссылку если есть).")
+                tg("⚠️ Слишком короткий текст (нужно минимум 50 символов). Отправь описание материала.")
 
 
 # ── Мониторинг ──────────────────────────────────────────────
@@ -996,6 +997,7 @@ def propose_one_analyzed(item):
     _, prev_sha = gh_read(INDEX_FILE)
     pending_save(text, link, item.get('date', datetime.now().strftime('%d %b %Y')),
                  source, item, prev_sha)
+    print(f"propose_one_analyzed: ожидаю подтверждения от пользователя")
 
 
 # ── Главная ─────────────────────────────────────────────────
@@ -1027,6 +1029,7 @@ def run():
         save_json(STATE_FILE, state)
 
         # 3. Пакетный анализ очереди и показ первого результата
+        # Только если нет ожидающего подтверждения
         if pending_load() is None:
             process_queue_batch()
 
