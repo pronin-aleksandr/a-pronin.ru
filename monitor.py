@@ -96,16 +96,27 @@ def get_snippet(text, keyword, context=120):
 
 # ── Telegram ────────────────────────────────────────────────
 
-def tg(message):
+def tg(message, reply_markup=None):
     try:
+        data = {'chat_id': CHAT_ID, 'text': message,
+                'parse_mode': 'HTML', 'disable_web_page_preview': True}
+        if reply_markup:
+            data['reply_markup'] = json.dumps(reply_markup)
         requests.post(
             f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage',
-            data={'chat_id': CHAT_ID, 'text': message,
-                  'parse_mode': 'HTML', 'disable_web_page_preview': True},
-            timeout=10
+            data=data, timeout=10
         )
     except Exception as e:
         print(f"TG ошибка: {e}")
+
+def tg_answer_callback(callback_query_id):
+    try:
+        requests.post(
+            f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/answerCallbackQuery',
+            data={'callback_query_id': callback_query_id},
+            timeout=10
+        )
+    except: pass
 
 def tg_get_file_path(file_id):
     """Получает путь к файлу на серверах Telegram."""
@@ -131,7 +142,7 @@ def tg_download_file(file_path):
 
 def get_updates(offset=None):
     try:
-        params = {'timeout': 0, 'allowed_updates': ['message']}
+        params = {'timeout': 0, 'allowed_updates': ['message', 'callback_query']}
         if offset:
             params['offset'] = offset
         r = requests.get(
@@ -418,7 +429,8 @@ def analyze_batch(items):
   }}
 ]
 
-Возможные placements: "news-consulting", "news-drone", "events-consulting", "events-drone", "profile-consulting", "profile-drone"
+Возможные placements: "news-consulting", "news-drone", "events-consulting", "events-drone"
+ВАЖНО: НЕ предлагай изменения в профиль (profile-consulting, profile-drone) — профиль редактируется вручную.
 Если found_on_site=true — placements пустой массив.""", max_tokens=2000)
 
     if not resp:
@@ -585,11 +597,12 @@ def do_confirm(pending, user_comment=''):
         analyzed = load_json(ANALYZED_FILE, [])
         q_len = queue_len() + len(analyzed)
         queue_note = f"\n\n📋 Ещё в очереди: {q_len}" if q_len > 0 else ""
+        rollback_btn = {'inline_keyboard': [[{'text': '🔄 ОТКАТ', 'callback_data': 'confirm_rollback'}]]}
         tg(
             f"✅ <b>Готово! Сайт обновлён.</b>\n\n"
-            f"🔗 {SITE_URL}\n\n"
-            f"Если что-то не так — ответь <b>ОТКАТ</b>"
-            + queue_note
+            f"🔗 {SITE_URL}"
+            + queue_note,
+            reply_markup=rollback_btn
         )
         # Показываем следующий из проанализированных
         if analyzed:
@@ -645,6 +658,32 @@ def process_commands():
     for upd in updates:
         uid  = upd['update_id']
         save_last_uid(uid)
+
+        # Обработка нажатий на inline-кнопки
+        cb = upd.get('callback_query')
+        if cb:
+            cb_cid = str(cb.get('from', {}).get('id', ''))
+            if cb_cid == str(CHAT_ID):
+                tg_answer_callback(cb['id'])
+                cb_data = cb.get('data', '')
+                pending = pending_load()
+                if cb_data == 'confirm_yes' and pending and pending['status'] == 'waiting_confirm':
+                    do_confirm(pending)
+                elif cb_data == 'confirm_no' and pending and pending['status'] == 'waiting_confirm':
+                    pending_clear()
+                    tg("⏭ Пропущено.")
+                    next_item = load_json(ANALYZED_FILE, [])
+                    if next_item:
+                        first = next_item.pop(0)
+                        save_json(ANALYZED_FILE, next_item)
+                        propose_one_analyzed(first)
+                    else:
+                        item = queue_pop()
+                        if item:
+                            propose_one(item)
+                elif cb_data == 'confirm_rollback' and pending and pending['status'] == 'done':
+                    do_rollback(pending)
+            continue
 
         msg     = upd.get('message', {})
         cid     = str(msg.get('chat', {}).get('id', ''))
@@ -937,15 +976,21 @@ def propose_one_analyzed(item):
     places = '\n'.join(f"• {PLACEMENT_LABELS.get(p,p)}" for p in placements)
     queue_note = f"\n\n📋 <i>Ещё в очереди: {q_len}</i>" if q_len > 0 else ""
 
+    buttons = {
+        'inline_keyboard': [[
+            {'text': '✅ ДА', 'callback_data': 'confirm_yes'},
+            {'text': '❌ НЕТ', 'callback_data': 'confirm_no'},
+        ]]
+    }
     tg(
         f"🤖 <b>Клод предлагает</b>\n\n"
         f"📌 <b>Источник:</b> {source}\n"
         f"📝 <b>Материал:</b> {text[:300]}{'...' if len(text)>300 else ''}\n"
         + (f"🔗 <b>Ссылка:</b> {link}\n" if link else "") +
         f"\n💡 <b>Предложение:</b>\n{item.get('suggestion','')}\n\n"
-        f"<b>Разместить в:</b>\n{places}\n\n"
-        f"✅ <b>ДА</b>  |  ❌ <b>НЕТ</b>  |  ✏️ <i>или надиктуй правки</i>"
-        + queue_note
+        f"<b>Разместить в:</b>\n{places}"
+        + queue_note,
+        reply_markup=buttons
     )
 
     _, prev_sha = gh_read(INDEX_FILE)
