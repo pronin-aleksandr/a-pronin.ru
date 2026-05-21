@@ -385,6 +385,21 @@ def manual_queue_len():
     return len(load_json(MANUAL_QUEUE_FILE, []))
 
 
+def fetch_url_content(url):
+    """Читает содержимое страницы по ссылке."""
+    try:
+        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
+        r.encoding = 'utf-8'
+        soup = BeautifulSoup(r.text, 'html.parser')
+        for tag in soup(['script', 'style', 'nav', 'header', 'footer']):
+            tag.decompose()
+        text = soup.get_text(separator=' ', strip=True)
+        return ' '.join(text.split())[:3000]
+    except Exception as e:
+        print(f"fetch_url_content ошибка: {e}")
+        return None
+
+
 def get_existing_content():
     """Читает news.json и events.json — только заголовки для сравнения."""
     news_raw,   _ = gh_read(NEWS_FILE)
@@ -422,11 +437,18 @@ def analyze_batch(items):
 
     items_str = ''
     for i, item in enumerate(items):
+        # Если есть ссылка — читаем содержимое страницы
+        url_content = ''
+        if item.get('link'):
+            print(f"analyze_batch: читаю {item['link']}")
+            url_content = fetch_url_content(item['link'])
+
         items_str += f"""
 Материал {i+1}:
   Источник: {item['source']}
-  Текст: {item['text'][:500]}
+  Текст от пользователя: {item['text'][:300]}
   Ссылка: {item.get('link') or 'нет'}
+  Содержимое по ссылке: {url_content[:1000] if url_content else 'не удалось загрузить'}
 """
 
     resp = claude(f"""Ты помощник по управлению сайтом Александра Пронина (a-pronin.ru).
@@ -449,13 +471,19 @@ def analyze_batch(items):
     "found_on_site": true или false,
     "reason": "объяснение 1-2 предложения",
     "suggestion": "куда и почему разместить",
-    "placements": []
+    "placements": [],
+    "title": "краткий заголовок материала (из содержимого ссылки если есть)",
+    "description": "краткое описание 1-2 предложения (из содержимого ссылки если есть)",
+    "event_day": "день числом или диапазон типа 28-29, если это мероприятие",
+    "event_month": "месяц сокращённо на русском (янв/фев/мар/апр/май/июн/июл/авг/сен/окт/ноя/дек)",
+    "event_year": "год четырьмя цифрами"
   }}
 ]
 
 Возможные placements: "news-consulting", "news-drone", "events-consulting", "events-drone"
-ВАЖНО: НЕ предлагай изменения в профиль (profile-consulting, profile-drone) — профиль редактируется вручную.
-Если found_on_site=true — placements пустой массив.""", max_tokens=2000)
+ВАЖНО: НЕ предлагай изменения в профиль — профиль редактируется вручную.
+Если found_on_site=true — placements пустой массив.
+Для title и description используй реальное содержимое материала, НЕ текст команды пользователя.""", max_tokens=2000)
 
     if not resp:
         # None означает ошибку API (429 или другую) — не теряем материалы
@@ -480,7 +508,9 @@ def analyze(text, link, source):
 
 # ── Генерация обновлённого HTML ─────────────────────────────
 
-def apply_json_edit(text, link, date, placements, user_comment=''):
+def apply_json_edit(text, link, date, placements, user_comment='', analysis=None):
+    if analysis is None:
+        analysis = {}
     """Добавляет материал в news.json или events.json — без редактирования HTML."""
     success = True
 
@@ -510,9 +540,9 @@ def apply_json_edit(text, link, date, placements, user_comment=''):
                 'id': int(datetime.now().timestamp()),
                 'section': section,
                 'source': user_comment or '',
-                'date': date,
-                'title': text[:100],
-                'text': text[:300],
+                'date': analysis.get('event_day','') + ' ' + analysis.get('event_month','') + ' ' + analysis.get('event_year','') if analysis.get('event_day') else date,
+                'title': analysis.get('title') or text[:100],
+                'text': analysis.get('description') or text[:300],
                 'link': link or ''
             }
             news[section].insert(0, new_item)
@@ -550,10 +580,13 @@ def apply_json_edit(text, link, date, placements, user_comment=''):
                 'id': int(datetime.now().timestamp()),
                 'section': section,
                 'type': etype,
-                'date': date,
-                'title': text[:100],
-                'text': text[:300],
-                'link': link or ''
+                'day':   analysis.get('event_day', ''),
+                'month': analysis.get('event_month', ''),
+                'year':  analysis.get('event_year', str(datetime.now().year)),
+                'title': analysis.get('title') or text[:100],
+                'text':  analysis.get('description') or text[:300],
+                'link':  link or '',
+                'link_text': 'Подробнее'
             }
             events[section][etype].insert(0, new_item)
             ok = gh_write(EVENTS_FILE, json.dumps(events, ensure_ascii=False, indent=2),
@@ -640,9 +673,28 @@ def propose_one(item):
 def do_confirm(pending, user_comment=''):
     tg("⚙️ <b>Добавляю в базу сайта...</b>")
 
+    # Если пользователь уточнил placement в комментарии — переопределяем
+    placements = pending['analysis'].get('placements', [])
+    if user_comment:
+        comment_lower = user_comment.lower()
+        new_placements = []
+        if 'консалтинг' in comment_lower:
+            if 'мероприят' in comment_lower: new_placements.append('events-consulting')
+            elif 'новост' in comment_lower:  new_placements.append('news-consulting')
+            else: new_placements = ['events-consulting' if any('events' in p for p in placements) else 'news-consulting']
+        if 'дрон' in comment_lower or 'фгд' in comment_lower:
+            if 'мероприят' in comment_lower: new_placements.append('events-drone')
+            elif 'новост' in comment_lower:  new_placements.append('news-drone')
+            else: new_placements = ['events-drone' if any('events' in p for p in placements) else 'news-drone']
+        if new_placements:
+            placements = new_placements
+            pending['analysis']['placements'] = placements
+            print(f"do_confirm: placement переопределён на {placements}")
+
     ok = apply_json_edit(
         pending['text'], pending['link'], pending['date'],
-        pending['analysis']['placements'], user_comment
+        placements, user_comment,
+        analysis=pending['analysis']
     )
 
     if ok:
