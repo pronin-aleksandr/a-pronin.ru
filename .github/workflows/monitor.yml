@@ -38,4 +38,5 @@ jobs:
           git config user.email "bot@a-pronin.ru"
           git add data/
           git diff --staged --quiet || git commit -m "Monitor: обновление состояния"
+          git pull --rebase origin main
           git push
