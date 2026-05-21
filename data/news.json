@@ -1,6 +1,24 @@
 {
   "consulting": [
     {
+      "id": 101,
+      "section": "consulting",
+      "source": "РБК Компании",
+      "date": "14 апр 2026",
+      "title": "HR-компетенции для руководителей: зачем бизнесу обучать управленцев",
+      "text": "Александр Пронин о том, зачем руководителям развивать HR-компетенции и как это влияет на эффективность бизнеса.",
+      "link": "https://companies.rbc.ru/news/mlRSCELYPX/hr-kompetentsii-dlya-rukovoditelej-zachem-biznesu-obuchat-upravlentsev/"
+    },
+    {
+      "id": 102,
+      "section": "consulting",
+      "source": "РБК Компании",
+      "date": "13 мар 2026",
+      "title": "Как измерять эффективность обучения",
+      "text": "Практические подходы к оценке результатов корпоративного обучения — метрики, модели и инструменты.",
+      "link": "https://companies.rbc.ru/news/vE03g8fNyb/kak-izmeryat-effektivnost-obucheniya/"
+    },
+    {
       "id": 1779373470,
       "section": "consulting",
       "source": "",
@@ -8,15 +26,6 @@
       "title": "Развитие руководителей: достижение долгосрочного эффекта",
       "text": "Статья о принципах андрагогики и важности системного подхода в обучении руководителей для достижения долгосрочных результатов.",
       "link": "https://vk.com/@bitobe-razvitie-rukovoditelei-dostizhenie-dolgosrochnogo-effekta"
-    },
-    {
-      "id": 1,
-      "section": "consulting",
-      "source": "РБК Компании",
-      "date": "30 янв 2026",
-      "title": "Тренды корпоративного обучения 2026. Проверка на прочность",
-      "text": "Тренды показывают — корпоративное обучение развивается по спирали, возвращаясь к знакомым идеям на новом технологическом уровне.",
-      "link": "https://companies.rbc.ru/news/qNfEYQgnSf/trendyi-korporativnogo-obucheniya-2026-proverka-na-prochnost/"
     },
     {
       "id": 2,
@@ -28,31 +37,31 @@
       "link": "https://companies.rbc.ru/news/sfrfTWHBNH/obuchenie-stanovitsya-upravlencheskim-instrumentom-v-rukah-biznes-liderov/"
     },
     {
-      "id": 3,
-      "section": "consulting",
-      "source": "Деловой Квартал",
-      "date": "1 фев 2025",
-      "title": "Кадры для стройки будущего",
-      "text": "Материал о подготовке специалистов для строительной отрасли с участием экспертов BITOBE.",
-      "link": "https://spb.dk.ru/news/237231320"
-    },
-    {
-      "id": 4,
+      "id": 1,
       "section": "consulting",
       "source": "РБК Компании",
-      "date": "1 апр 2025",
-      "title": "Разработанная BITOBE методология помогла установить рекорд России",
-      "text": "Команда BITOBE разработала образовательную методологию, применённую в проекте, установившем рекорд России.",
-      "link": "https://companies.rbc.ru/news/k3tVT8ROIi/razrabotannaya-bitobe-metodologiya-pomogla-ustanovit-rekord-rossii/"
+      "date": "30 янв 2026",
+      "title": "Тренды корпоративного обучения 2026. Проверка на прочность",
+      "text": "Тренды показывают — корпоративное обучение развивается по спирали, возвращаясь к знакомым идеям на новом технологическом уровне.",
+      "link": "https://companies.rbc.ru/news/qNfEYQgnSf/trendyi-korporativnogo-obucheniya-2026-proverka-na-prochnost/"
     },
     {
-      "id": 5,
+      "id": 103,
       "section": "consulting",
       "source": "РБК Компании",
-      "date": "1 июн 2025",
-      "title": "Почему корпоративное обучение стало стратегическим активом",
-      "text": "Обучение персонала перестало быть исключительно HR-функцией и превращается в инструмент бизнес-стратегии.",
-      "link": "https://companies.rbc.ru/news/32WWeuKsy9/pochemu-korporativnoe-obuchenie-stalo-strategicheskim-aktivom/"
+      "date": "25 дек 2025",
+      "title": "Метакомпетенции лидеров стали стратегическим преимуществом для компаний",
+      "text": "Метакомпетенции — способность учиться, адаптироваться и управлять неопределённостью — становятся ключевым конкурентным преимуществом.",
+      "link": "https://companies.rbc.ru/news/ACo29sfutI/metakompetentsii-liderov-stali-strategicheskim-preimuschestvom-dlya-kompanij/"
+    },
+    {
+      "id": 7,
+      "section": "consulting",
+      "source": "РБК Компании",
+      "date": "22 окт 2025",
+      "title": "О сотрудникоцентричности без иллюзий: что полезно знать руководителю",
+      "text": "Практический взгляд на построение культуры, ориентированной на сотрудника, без популистских крайностей.",
+      "link": "https://companies.rbc.ru/news/eTitAYLaze/o-sotrudnikotsentrichnosti-bez-illyuzij-chto-polezno-znat-rukovoditelyu/"
     },
     {
       "id": 6,
@@ -64,13 +73,31 @@
       "link": "https://abn.agency/2025/10/21/na-konferenczii-noteh-obsudili-kak-gotovit-kadry-dlya-stroitelnoj-otrasli-budushhego/"
     },
     {
-      "id": 7,
+      "id": 5,
       "section": "consulting",
       "source": "РБК Компании",
-      "date": "22 окт 2025",
-      "title": "О сотрудникоцентричности без иллюзий: что полезно знать руководителю",
-      "text": "Практический взгляд на построение культуры, ориентированной на сотрудника, без популистских крайностей.",
-      "link": "https://companies.rbc.ru/news/eTitAYLaze/o-sotrudnikotsentrichnosti-bez-illyuzij-chto-polezno-znat-rukovoditelyu/"
+      "date": "1 июн 2025",
+      "title": "Почему корпоративное обучение стало стратегическим активом",
+      "text": "Обучение персонала перестало быть исключительно HR-функцией и превращается в инструмент бизнес-стратегии.",
+      "link": "https://companies.rbc.ru/news/32WWeuKsy9/pochemu-korporativnoe-obuchenie-stalo-strategicheskim-aktivom/"
+    },
+    {
+      "id": 4,
+      "section": "consulting",
+      "source": "РБК Компании",
+      "date": "1 апр 2025",
+      "title": "Разработанная BITOBE методология помогла установить рекорд России",
+      "text": "Команда BITOBE разработала образовательную методологию, применённую в проекте, установившем рекорд России.",
+      "link": "https://companies.rbc.ru/news/k3tVT8ROIi/razrabotannaya-bitobe-metodologiya-pomogla-ustanovit-rekord-rossii/"
+    },
+    {
+      "id": 3,
+      "section": "consulting",
+      "source": "Деловой Квартал",
+      "date": "1 фев 2025",
+      "title": "Кадры для стройки будущего",
+      "text": "Материал о подготовке специалистов для строительной отрасли с участием экспертов BITOBE.",
+      "link": "https://spb.dk.ru/news/237231320"
     }
   ],
   "drone": [
