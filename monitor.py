@@ -38,7 +38,8 @@ VK_PAGES = [
 
 STATE_FILE   = 'data/state.json'
 PENDING_FILE = 'data/pending.json'
-QUEUE_FILE   = 'data/queue.json'
+QUEUE_FILE        = 'data/queue.json'
+MANUAL_QUEUE_FILE = 'data/manual_queue.json'
 UPDATES_FILE = 'data/last_update_id.txt'
 
 PLACEMENT_LABELS = {
@@ -361,6 +362,29 @@ ANALYZED_FILE = 'data/analyzed.json'
 NEWS_FILE     = 'data/news.json'
 EVENTS_FILE   = 'data/events.json'
 
+def manual_queue_add(text, link):
+    """Добавляет материал от пользователя в приоритетную очередь."""
+    q = load_json(MANUAL_QUEUE_FILE, [])
+    q.append({
+        'text': text, 'link': link,
+        'source': 'Вручную от пользователя',
+        'added': datetime.now().isoformat()
+    })
+    save_json(MANUAL_QUEUE_FILE, q)
+    print(f"manual_queue: добавлено — {text[:60]}")
+
+def manual_queue_pop():
+    q = load_json(MANUAL_QUEUE_FILE, [])
+    if not q:
+        return None
+    item = q.pop(0)
+    save_json(MANUAL_QUEUE_FILE, q)
+    return item
+
+def manual_queue_len():
+    return len(load_json(MANUAL_QUEUE_FILE, []))
+
+
 def get_existing_content():
     """Читает news.json и events.json — только заголовки для сравнения."""
     news_raw,   _ = gh_read(NEWS_FILE)
@@ -604,8 +628,11 @@ def do_confirm(pending, user_comment=''):
             + queue_note,
             reply_markup=rollback_btn
         )
-        # Показываем следующий из проанализированных
-        if analyzed:
+        # После подтверждения — сначала проверяем приоритетную очередь
+        manual_item = manual_queue_pop()
+        if manual_item:
+            propose_one(manual_item)
+        elif analyzed:
             next_item = analyzed.pop(0)
             save_json(ANALYZED_FILE, analyzed)
             propose_one_analyzed(next_item)
@@ -672,15 +699,16 @@ def process_commands():
                 elif cb_data == 'confirm_no' and pending and pending['status'] == 'waiting_confirm':
                     pending_clear()
                     tg("⏭ Пропущено.")
-                    next_item = load_json(ANALYZED_FILE, [])
-                    if next_item:
-                        first = next_item.pop(0)
-                        save_json(ANALYZED_FILE, next_item)
-                        propose_one_analyzed(first)
+                    # Сначала приоритетная очередь
+                    manual_item = manual_queue_pop()
+                    if manual_item:
+                        propose_one(manual_item)
                     else:
-                        item = queue_pop()
-                        if item:
-                            propose_one(item)
+                        analyzed = load_json(ANALYZED_FILE, [])
+                        if analyzed:
+                            first = analyzed.pop(0)
+                            save_json(ANALYZED_FILE, analyzed)
+                            propose_one_analyzed(first)
                 elif cb_data == 'confirm_rollback' and pending and pending['status'] == 'done':
                     do_rollback(pending)
             continue
@@ -777,13 +805,14 @@ def process_commands():
             clean = text.replace(link, '').strip() if link else text
 
             if len(clean) > 50:
-                # Если сейчас нет pending — анализируем сразу
-                # Иначе добавляем в очередь
+                manual_queue_add(clean, link)
                 if pending_load() is None:
-                    propose_one({'text': clean, 'link': link, 'source': 'Вручную'})
+                    # Сразу обрабатываем
+                    item = manual_queue_pop()
+                    if item:
+                        propose_one(item)
                 else:
-                    queue_add(clean, link, 'Вручную')
-                    tg(f"📋 Добавлено в очередь. Сначала ответь на текущее предложение.")
+                    tg(f"📋 Твой материал в приоритете. Сначала ответь на текущее предложение — потом сразу перейдём к твоему.")
             else:
                 tg("⚠️ Слишком короткий текст (нужно минимум 50 символов). Отправь описание материала.")
 
@@ -900,6 +929,13 @@ def process_vk(page, state):
 def process_queue_batch():
     """Анализирует всю очередь одним запросом, сохраняет результаты,
     показывает первый материал пользователю."""
+
+    # Сначала проверяем приоритетную очередь (от пользователя)
+    manual_item = manual_queue_pop()
+    if manual_item:
+        print(f"process_queue_batch: приоритет — материал от пользователя")
+        propose_one(manual_item)
+        return
 
     # Проверяем — есть ли уже проанализированные материалы
     analyzed = load_json(ANALYZED_FILE, [])
