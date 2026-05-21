@@ -260,7 +260,7 @@ def claude(prompt, max_tokens=2000):
     try:
         print(f"Gemini: отправляю запрос ({len(prompt)} символов)...")
         r = requests.post(
-            f'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}',
+            f'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key={GEMINI_KEY}',
             headers={'content-type': 'application/json'},
             json={
                 'contents': [{'parts': [{'text': prompt}]}],
