@@ -487,16 +487,29 @@ def apply_json_edit(text, link, date, placements, user_comment=''):
     for placement in placements:
         if placement.startswith('news-'):
             section = placement.replace('news-', '')
-            news_raw, sha = gh_read(NEWS_FILE)
+
+            # Читаем свежий SHA через API (не через raw)
+            headers = {'Authorization': f'token {GITHUB_TOKEN}',
+                      'Accept': 'application/vnd.github.v3+json'}
+            r = requests.get(
+                f'https://api.github.com/repos/{GITHUB_REPO}/contents/{NEWS_FILE}',
+                headers=headers, timeout=15)
+            print(f"apply_json_edit news API статус: {r.status_code}")
+            if r.status_code != 200:
+                print(f"apply_json_edit ошибка: {r.text[:200]}")
+                success = False
+                continue
+            sha = r.json().get('sha')
+            news_raw = base64.b64decode(
+                r.json()['content'].replace('\n','').replace(' ','')).decode('utf-8')
             news = json.loads(news_raw) if news_raw else {'consulting': [], 'drone': []}
+
             if section not in news:
                 news[section] = []
-            # Определяем source из user_comment или текста
-            source = user_comment if user_comment else ''
             new_item = {
                 'id': int(datetime.now().timestamp()),
                 'section': section,
-                'source': source,
+                'source': user_comment or '',
                 'date': date,
                 'title': text[:100],
                 'text': text[:300],
@@ -505,18 +518,33 @@ def apply_json_edit(text, link, date, placements, user_comment=''):
             news[section].insert(0, new_item)
             ok = gh_write(NEWS_FILE, json.dumps(news, ensure_ascii=False, indent=2),
                          f"Новость: {text[:50]}", sha=sha)
+            print(f"apply_json_edit news write: {ok}")
             if not ok: success = False
 
         elif placement.startswith('events-'):
             section = placement.replace('events-', '')
-            events_raw, sha = gh_read(EVENTS_FILE)
+
+            # Читаем свежий SHA через API
+            headers = {'Authorization': f'token {GITHUB_TOKEN}',
+                      'Accept': 'application/vnd.github.v3+json'}
+            r = requests.get(
+                f'https://api.github.com/repos/{GITHUB_REPO}/contents/{EVENTS_FILE}',
+                headers=headers, timeout=15)
+            print(f"apply_json_edit events API статус: {r.status_code}")
+            if r.status_code != 200:
+                print(f"apply_json_edit ошибка: {r.text[:200]}")
+                success = False
+                continue
+            sha = r.json().get('sha')
+            events_raw = base64.b64decode(
+                r.json()['content'].replace('\n','').replace(' ','')).decode('utf-8')
             events = json.loads(events_raw) if events_raw else {
                 'consulting': {'upcoming': [], 'past': []},
                 'drone': {'upcoming': [], 'past': []}
             }
+
             if section not in events:
                 events[section] = {'upcoming': [], 'past': []}
-            # Определяем upcoming или past по дате
             etype = 'upcoming'
             new_item = {
                 'id': int(datetime.now().timestamp()),
@@ -530,6 +558,7 @@ def apply_json_edit(text, link, date, placements, user_comment=''):
             events[section][etype].insert(0, new_item)
             ok = gh_write(EVENTS_FILE, json.dumps(events, ensure_ascii=False, indent=2),
                          f"Мероприятие: {text[:50]}", sha=sha)
+            print(f"apply_json_edit events write: {ok}")
             if not ok: success = False
 
     return success
