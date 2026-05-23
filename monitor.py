@@ -24,8 +24,9 @@ SITE_URL       = 'https://a-pronin.ru'
 INDEX_FILE     = 'index.html'
 
 WEB_PAGES = [
-    {'url': 'https://bitobe.ru/team/4573/', 'section': 'Консалтинг', 'keywords': ['Пронин']},
-    {'url': 'https://fgd.spb.ru/',          'section': 'Дроны',      'keywords': ['Пронин']},
+    {'url': 'https://bitobe.ru/team/4573/',                              'section': 'Консалтинг', 'keywords': ['Пронин']},
+    {'url': 'https://fgd.spb.ru/',                                       'section': 'Дроны',      'keywords': ['Пронин']},
+    {'url': 'https://companies.rbc.ru/experts/25902/aleksandr-pronin/', 'section': 'Консалтинг', 'keywords': ['Пронин']},
 ]
 
 VK_PAGES = [
@@ -385,8 +386,46 @@ def manual_queue_len():
     return len(load_json(MANUAL_QUEUE_FILE, []))
 
 
+def fetch_vk_post(url):
+    """Получает текст поста ВКонтакте через VK API."""
+    try:
+        # Извлекаем owner_id и post_id из ссылки
+        # Форматы: vk.com/wall-200393_2308, vk.ru/wall-200393_2308
+        import re
+        match = re.search(r'wall(-?\d+)_(\d+)', url)
+        if not match:
+            return None
+        owner_id = match.group(1)
+        post_id  = match.group(2)
+
+        r = requests.get('https://api.vk.com/method/wall.getById', params={
+            'posts':        f"{owner_id}_{post_id}",
+            'access_token': VK_TOKEN,
+            'v':            '5.131'
+        }, timeout=10)
+        data = r.json()
+        if 'error' in data:
+            print(f"VK API ошибка: {data['error']}")
+            return None
+        items = data.get('response', {}).get('items', []) or data.get('response', [])
+        if items:
+            text = items[0].get('text', '')
+            print(f"fetch_vk_post: получено {len(text)} символов")
+            return text[:3000] if text else None
+        return None
+    except Exception as e:
+        print(f"fetch_vk_post ошибка: {e}")
+        return None
+
 def fetch_url_content(url):
     """Читает содержимое страницы по ссылке."""
+    # Для ВКонтакте используем API
+    if 'vk.com' in url or 'vk.ru' in url:
+        if 'wall' in url:
+            vk_text = fetch_vk_post(url)
+            if vk_text:
+                return vk_text
+
     try:
         r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
         r.encoding = 'utf-8'
@@ -394,7 +433,9 @@ def fetch_url_content(url):
         for tag in soup(['script', 'style', 'nav', 'header', 'footer']):
             tag.decompose()
         text = soup.get_text(separator=' ', strip=True)
-        return ' '.join(text.split())[:3000]
+        result = ' '.join(text.split())[:3000]
+        print(f"fetch_url_content: получено {len(result)} символов")
+        return result
     except Exception as e:
         print(f"fetch_url_content ошибка: {e}")
         return None
@@ -472,11 +513,11 @@ def analyze_batch(items):
     "reason": "объяснение 1-2 предложения",
     "suggestion": "куда и почему разместить",
     "placements": [],
-    "title": "краткий заголовок материала (из содержимого ссылки если есть)",
-    "description": "краткое описание 1-2 предложения (из содержимого ссылки если есть)",
-    "event_day": "день числом или диапазон типа 28-29, если это мероприятие",
-    "event_month": "месяц сокращённо на русском (янв/фев/мар/апр/май/июн/июл/авг/сен/окт/ноя/дек)",
-    "event_year": "год четырьмя цифрами"
+    "title": "ОБЯЗАТЕЛЬНО: краткий заголовок материала на русском (из содержимого ссылки, не из команды пользователя)",
+    "description": "ОБЯЗАТЕЛЬНО: описание 1-2 предложения на русском (из содержимого ссылки)",
+    "event_day": "день числом или диапазон типа 28-29 (только для мероприятий)",
+    "event_month": "месяц сокращённо на русском: янв/фев/мар/апр/май/июн/июл/авг/сен/окт/ноя/дек (только для мероприятий)",
+    "event_year": "год четырьмя цифрами (только для мероприятий)"
   }}
 ]
 
@@ -819,9 +860,10 @@ def process_commands():
         if cid != str(CHAT_ID):
             continue
 
-        # Определяем текст: обычное сообщение или голосовое
+        # Определяем текст: обычное, голосовое или пересланное сообщение
         text = msg.get('text', '').strip()
         voice = msg.get('voice')
+        forward = msg.get('forward_origin') or msg.get('forward_from') or msg.get('forward_from_chat')
 
         if voice and not text:
             tg("🎤 <b>Получил голосовое, распознаю...</b>")
@@ -830,6 +872,11 @@ def process_commands():
                 tg("❌ Не удалось распознать голос. Попробуй написать текстом.")
                 continue
             tg(f"📝 <b>Распознано:</b> <i>{text}</i>")
+
+        # Пересланное сообщение — берём текст из него
+        if forward and not text:
+            text = msg.get('text', '') or msg.get('caption', '')
+            text = text.strip() if text else ''
 
         if not text:
             continue
