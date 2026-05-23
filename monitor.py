@@ -702,7 +702,10 @@ def do_confirm(pending, user_comment=''):
         analyzed = load_json(ANALYZED_FILE, [])
         q_len = queue_len() + len(analyzed)
         queue_note = f"\n\n📋 Ещё в очереди: {q_len}" if q_len > 0 else ""
-        rollback_btn = {'inline_keyboard': [[{'text': '🔄 ОТКАТ', 'callback_data': 'confirm_rollback'}]]}
+        rollback_btn = {'inline_keyboard': [[
+            {'text': '✅ ПРИНЯТО', 'callback_data': 'confirm_done'},
+            {'text': '🔄 ОТКАТ',   'callback_data': 'confirm_rollback'}
+        ]]}
         tg(
             f"✅ <b>Готово! Сайт обновлён.</b>\n\n"
             f"🔗 {SITE_URL}"
@@ -781,6 +784,18 @@ def process_commands():
                     pending_clear()
                     tg("⏭ Пропущено.")
                     # Сначала приоритетная очередь
+                    manual_item = manual_queue_pop()
+                    if manual_item:
+                        propose_one(manual_item)
+                    else:
+                        analyzed = load_json(ANALYZED_FILE, [])
+                        if analyzed:
+                            first = analyzed.pop(0)
+                            save_json(ANALYZED_FILE, analyzed)
+                            propose_one_analyzed(first)
+                elif cb_data == 'confirm_done' and pending and pending['status'] == 'done':
+                    pending_clear()
+                    tg("👍 Принято.")
                     manual_item = manual_queue_pop()
                     if manual_item:
                         propose_one(manual_item)
