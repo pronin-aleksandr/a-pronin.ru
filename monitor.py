@@ -496,6 +496,8 @@ def analyze_batch(items):
         return None
 
     print(f"analyze_batch: получено {len(results)} результатов")
+    for r in results:
+        print(f"  title={r.get('title','—')[:50]} desc={r.get('description','—')[:50]}")
     return results
 
 def analyze(text, link, source):
@@ -1127,8 +1129,15 @@ def propose_one_analyzed(item):
         ]]
     }
     # Формируем превью заголовка и подстрочника из анализа
-    preview_title = item.get('title', '')
-    preview_desc  = item.get('description', '')
+    preview_title = item.get('title', '') or item.get('suggested_title', '')
+    preview_desc  = item.get('description', '') or item.get('suggested_description', '')
+    
+    # Если Gemini не вернул превью — генерируем из suggestion
+    if not preview_title and item.get('suggestion'):
+        preview_title = item['suggestion'].split('.')[0][:80]
+    
+    print(f"propose_one_analyzed preview_title={preview_title[:50] if preview_title else 'пусто'}")
+    
     preview_block = ''
     if preview_title:
         preview_block = f"\n\n📋 <b>Как будет выглядеть:</b>\n<b>{preview_title}</b>"
