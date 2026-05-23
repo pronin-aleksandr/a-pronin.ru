@@ -1122,13 +1122,22 @@ def propose_one_analyzed(item):
             {'text': '❌ НЕТ', 'callback_data': 'confirm_no'},
         ]]
     }
+    # Формируем превью заголовка и подстрочника из анализа
+    preview_title = item.get('title', '')
+    preview_desc  = item.get('description', '')
+    preview_block = ''
+    if preview_title:
+        preview_block = f"\n\n📋 <b>Как будет выглядеть:</b>\n<b>{preview_title}</b>"
+        if preview_desc:
+            preview_block += f"\n<i>{preview_desc}</i>"
+
     tg(
         f"🤖 <b>Клод предлагает</b>\n\n"
         f"📌 <b>Источник:</b> {source}\n"
-        f"📝 <b>Материал:</b> {text[:300]}{'...' if len(text)>300 else ''}\n"
         + (f"🔗 <b>Ссылка:</b> {link}\n" if link else "") +
         f"\n💡 <b>Предложение:</b>\n{item.get('suggestion','')}\n\n"
         f"<b>Разместить в:</b>\n{places}"
+        + preview_block
         + queue_note,
         reply_markup=buttons
     )
