@@ -900,15 +900,15 @@ def process_commands():
             link  = urls[0] if urls else ''
             clean = text.replace(link, '').strip() if link else text
 
-            if len(clean) > 50:
+            if link:
                 # Убираем команды типа "сделай новость", "добавь" из текста
                 import re as _re
                 clean_text = _re.sub(
                     r'^(добавь|сделай|размести|поставь|внеси|создай)[^,\.]*[,\.]?\s*',
                     '', clean, flags=_re.IGNORECASE
                 ).strip()
-                if len(clean_text) < 20:
-                    clean_text = clean  # Если после очистки слишком мало — оставляем оригинал
+                if len(clean_text) < 5:
+                    clean_text = clean
                 manual_queue_add(clean_text, link)
                 if pending_load() is None:
                     item = manual_queue_pop()
@@ -917,7 +917,7 @@ def process_commands():
                 else:
                     tg(f"📋 Твой материал в приоритете. Сначала ответь на текущее предложение — потом сразу перейдём к твоему.")
             else:
-                tg("⚠️ Слишком короткий текст (нужно минимум 50 символов). Отправь описание материала.")
+                tg("⚠️ Отправь ссылку на материал.")
 
 
 # ── Мониторинг ──────────────────────────────────────────────
