@@ -539,7 +539,7 @@ def apply_json_edit(text, link, date, placements, user_comment='', analysis=None
             new_item = {
                 'id': int(datetime.now().timestamp()),
                 'section': section,
-                'source': user_comment or '',
+                'source': 'BITOBE' if 'bitobe' in (link or '').lower() or 'bitobe' in text.lower() else ('ВКонтакте' if 'vk.' in (link or '') else 'РБК' if 'rbc.' in (link or '') else ''),
                 'date': analysis.get('event_day','') + ' ' + analysis.get('event_month','') + ' ' + analysis.get('event_year','') if analysis.get('event_day') else date,
                 'title': analysis.get('title') or text[:100],
                 'text': analysis.get('description') or text[:300],
@@ -901,9 +901,16 @@ def process_commands():
             clean = text.replace(link, '').strip() if link else text
 
             if len(clean) > 50:
-                manual_queue_add(clean, link)
+                # Убираем команды типа "сделай новость", "добавь" из текста
+                import re as _re
+                clean_text = _re.sub(
+                    r'^(добавь|сделай|размести|поставь|внеси|создай)[^,\.]*[,\.]?\s*',
+                    '', clean, flags=_re.IGNORECASE
+                ).strip()
+                if len(clean_text) < 20:
+                    clean_text = clean  # Если после очистки слишком мало — оставляем оригинал
+                manual_queue_add(clean_text, link)
                 if pending_load() is None:
-                    # Сразу обрабатываем
                     item = manual_queue_pop()
                     if item:
                         propose_one(item)
