@@ -770,6 +770,9 @@ def process_commands():
         uid  = upd['update_id']
         save_last_uid(uid)
 
+        # Перечитываем pending в начале каждой итерации
+        pending = pending_load()
+
         # Обработка нажатий на inline-кнопки
         cb = upd.get('callback_query')
         if cb:
@@ -914,6 +917,7 @@ def process_commands():
                     item = manual_queue_pop()
                     if item:
                         propose_one(item)
+                        break  # Прерываем цикл — ждём ответа пользователя
                 else:
                     tg(f"📋 Твой материал в приоритете. Сначала ответь на текущее предложение — потом сразу перейдём к твоему.")
             else:
