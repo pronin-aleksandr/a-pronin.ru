@@ -441,6 +441,22 @@ def fetch_url_content(url):
         return None
 
 
+def normalize_date(date_str):
+    """Переводит английские месяцы в русские."""
+    en_to_ru = {
+        'january':'янв','february':'фев','march':'мар','april':'апр',
+        'may':'май','june':'июн','july':'июл','august':'авг',
+        'september':'сен','october':'окт','november':'ноя','december':'дек',
+        'jan':'янв','feb':'фев','mar':'мар','apr':'апр',
+        'jun':'июн','jul':'июл','aug':'авг','sep':'сен',
+        'oct':'окт','nov':'ноя','dec':'дек'
+    }
+    result = date_str
+    for en, ru in en_to_ru.items():
+        result = result.lower().replace(en, ru)
+    return result
+
+
 def get_existing_content():
     """Читает news.json и events.json — только заголовки для сравнения."""
     news_raw,   _ = gh_read(NEWS_FILE)
@@ -606,7 +622,7 @@ def apply_json_edit(text, link, date, placements, user_comment='', analysis=None
                 'id': int(datetime.now().timestamp()),
                 'section': section,
                 'source': 'BITOBE' if 'bitobe' in (link or '').lower() or 'bitobe' in text.lower() else ('ВКонтакте' if 'vk.' in (link or '') else 'РБК' if 'rbc.' in (link or '') else ''),
-                'date': analysis.get('event_day','') + ' ' + analysis.get('event_month','') + ' ' + analysis.get('event_year','') if analysis.get('event_day') else date,
+                'date': normalize_date(analysis.get('event_day','') + ' ' + analysis.get('event_month','') + ' ' + analysis.get('event_year','')) if analysis.get('event_day') else normalize_date(date),
                 'title': analysis.get('title') or text[:100],
                 'text': analysis.get('description') or text[:300],
                 'link': link or ''
