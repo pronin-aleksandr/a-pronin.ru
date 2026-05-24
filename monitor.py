@@ -476,13 +476,31 @@ def analyze_batch(items):
     print(f"analyze_batch: анализирую {len(items)} материалов...")
     site_text = get_existing_content()
 
+    # Маппинг VK owner_id → раздел сайта
+    VK_SECTION_MAP = {
+        '-200393': 'consulting',  # vk.com/bitobe
+        '-41670789': 'drone',     # vk.com/fgdrus
+        '-145367898': 'drone',    # vk.com/fgdpskov
+        '-222511091': 'drone',    # vk.com/fgdspb
+    }
+
     items_str = ''
     for i, item in enumerate(items):
         # Если есть ссылка — читаем содержимое страницы
         url_content = ''
+        section_hint = ''
         if item.get('link'):
             print(f"analyze_batch: читаю {item['link']}")
             url_content = fetch_url_content(item['link'])
+
+            # Определяем раздел по owner_id из VK-ссылки
+            import re as _re2
+            m = _re2.search(r'wall(-?\d+)_', item['link'])
+            if m:
+                owner = m.group(1)
+                section = VK_SECTION_MAP.get(owner)
+                if section:
+                    section_hint = f"  ВАЖНО: этот пост из ВКонтакте принадлежит группе {owner} — это раздел {'консалтинг' if section == 'consulting' else 'дроны'} сайта. Размещай только в {'news-consulting или events-consulting' if section == 'consulting' else 'news-drone или events-drone'}."
 
         items_str += f"""
 Материал {i+1}:
@@ -490,6 +508,7 @@ def analyze_batch(items):
   Текст от пользователя: {item['text'][:300]}
   Ссылка: {item.get('link') or 'нет'}
   Содержимое по ссылке: {url_content[:1000] if url_content else 'не удалось загрузить'}
+{section_hint}
 """
 
     resp = claude(f"""Ты помощник по управлению сайтом Александра Пронина (a-pronin.ru).
