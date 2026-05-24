@@ -598,6 +598,10 @@ def apply_json_edit(text, link, date, placements, user_comment='', analysis=None
 
             if section not in news:
                 news[section] = []
+            # Проверка дублей по ссылке
+            if link and any(e.get('link') == link for e in news[section]):
+                print(f"apply_json_edit: ссылка уже есть в {section}, пропускаю")
+                continue
             new_item = {
                 'id': int(datetime.now().timestamp()),
                 'section': section,
@@ -637,6 +641,10 @@ def apply_json_edit(text, link, date, placements, user_comment='', analysis=None
 
             if section not in events:
                 events[section] = {'upcoming': [], 'past': []}
+            # Проверка дублей по ссылке
+            if link and any(e.get('link') == link for etype_list in events[section].values() for e in etype_list):
+                print(f"apply_json_edit: ссылка уже есть в events/{section}, пропускаю")
+                continue
             etype = 'upcoming'
             new_item = {
                 'id': int(datetime.now().timestamp()),
