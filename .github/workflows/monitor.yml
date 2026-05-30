@@ -21,7 +21,9 @@ jobs:
           python-version: '3.11'
 
       - name: Install system dependencies
-        run: sudo apt-get install -y ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg --fix-missing
 
       - name: Install dependencies
         run: pip install requests beautifulsoup4 SpeechRecognition pydub
