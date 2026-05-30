@@ -1,15 +1,6 @@
 {
   "consulting": [
     {
-      "id": 1780128323,
-      "section": "consulting",
-      "source": "BITOBE",
-      "date": "30 май 2026",
-      "title": "Самарканд: прогресс как череда находок и утрат",
-      "text": "Размышления о том, что прогресс — это не только создание нового, но и способность сохранить знания, технологии и способы мышления предков.",
-      "link": "https://vk.com/wall93680_3168"
-    },
-    {
       "id": 1779626039,
       "section": "consulting",
       "source": "ВКонтакте",
@@ -174,6 +165,15 @@
       "link": "https://t.me/droneracingfederation/5026"
     },
     {
+      "id": 1779626994,
+      "section": "drone",
+      "source": "",
+      "date": "25 май 2026",
+      "title": "Петербург — столица гонок дронов",
+      "text": "Анонс масштабного события в мире FPV-спорта, подтверждающий статус Санкт-Петербурга как центра развития гонок дронов в России.",
+      "link": "https://t.me/Vadim_Dzema_FPV/893"
+    },
+    {
       "id": 1779652625,
       "section": "drone",
       "source": "ВКонтакте",
@@ -183,13 +183,13 @@
       "link": "https://vk.ru/wall93680_3128"
     },
     {
-      "id": 1779626994,
+      "id": 2,
       "section": "drone",
-      "source": "",
-      "date": "6-7 июн 2026",
-      "title": "Петербург — столица гонок дронов",
-      "text": "Анонс масштабного события в мире FPV-спорта, подтверждающий статус Санкт-Петербурга как центра развития гонок дронов в России.",
-      "link": "https://t.me/Vadim_Dzema_FPV/893"
+      "source": "NewProspect",
+      "date": "25 апр 2026",
+      "title": "Беглов: в Петербурге впервые в России запустили студенческую лигу гонок дронов",
+      "text": "Санкт-Петербург стал первым регионом России, где официально запущена студенческая лига гонок дронов.",
+      "link": "https://newprospect.ru/news/aleksandr-beglov-v-peterburge-vpervyie-v-rossii-zapustili-studencheskuyu-ligu-gonok-dronov"
     },
     {
       "id": 1,
@@ -199,15 +199,6 @@
       "title": "Технологии и скорость: в Политехе устроили гонки дронов «Поликап»",
       "text": "Александр Пронин в роли главного судьи соревнований по гонкам дронов в СПбПУ.",
       "link": "https://www.spbstu.ru/media/news/sport/tekhnologii-i-skorost-v-politekhe-ustroili-gonki-dronov-polikap/"
-    },
-    {
-      "id": 2,
-      "section": "drone",
-      "source": "NewProspect",
-      "date": "25 апр 2026",
-      "title": "Беглов: в Петербурге впервые в России запустили студенческую лигу гонок дронов",
-      "text": "Санкт-Петербург стал первым регионом России, где официально запущена студенческая лига гонок дронов.",
-      "link": "https://newprospect.ru/news/aleksandr-beglov-v-peterburge-vpervyie-v-rossii-zapustili-studencheskuyu-ligu-gonok-dronov"
     },
     {
       "id": 3,
