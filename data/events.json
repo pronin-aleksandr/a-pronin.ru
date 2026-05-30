@@ -128,6 +128,18 @@
   "drone": {
     "upcoming": [
       {
+        "id": 1780126779,
+        "section": "drone",
+        "type": "upcoming",
+        "day": null,
+        "month": null,
+        "year": null,
+        "title": "Гонка «Победа» на стадионе «Петровский» перенесена",
+        "text": "Организаторы сообщают о переносе соревнований по гонкам дронов на неопределенный срок.",
+        "link": "https://t.me/droneracingfederation/5026",
+        "link_text": "Подробнее"
+      },
+      {
         "id": 1779626994,
         "section": "drone",
         "type": "upcoming",
