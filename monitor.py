@@ -1002,6 +1002,12 @@ def process_commands():
             link  = urls[0] if urls else ''
             clean = text.replace(link, '').strip() if link else text
 
+            # Игнорируем короткие ответы — они обрабатываются выше как команды
+            IGNORED = {'да','нет','yes','no','ok','ок','откат','rollback',
+                       'принято','отмена','пропустить','skip','+','-','👍','✅','❌'}
+            if tl in IGNORED:
+                continue
+
             if link:
                 # Убираем команды типа "сделай новость", "добавь" из текста
                 import re as _re
