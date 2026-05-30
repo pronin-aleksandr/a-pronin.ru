@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+Disallow: /data/
+
+User-agent: Googlebot
+Allow: /
+Disallow: /data/
+
+User-agent: Yandex
+Allow: /
+Disallow: /data/
+
+Sitemap: https://a-pronin.ru/sitemap.xml
