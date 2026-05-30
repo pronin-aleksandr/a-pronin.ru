@@ -407,9 +407,16 @@ def fetch_vk_post(url):
         if 'error' in data:
             print(f"VK API ошибка: {data['error']}")
             return None
-        items = data.get('response', {}).get('items', []) or data.get('response', [])
+        response = data.get('response', {})
+        if isinstance(response, dict):
+            items = response.get('items', [])
+        elif isinstance(response, list):
+            items = response
+        else:
+            items = []
         if items:
-            text = items[0].get('text', '')
+            text = items[0].get('text', '') if isinstance(items[0], dict) else ''
+
             print(f"fetch_vk_post: получено {len(text)} символов")
             return text[:3000] if text else None
         return None
