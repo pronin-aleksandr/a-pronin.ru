@@ -628,7 +628,11 @@ def apply_json_edit(text, link, date, placements, user_comment='', analysis=None
             new_item = {
                 'id': int(datetime.now().timestamp()),
                 'section': section,
-                'source': 'BITOBE' if 'bitobe' in (link or '').lower() or 'bitobe' in text.lower() else ('ВКонтакте' if 'vk.' in (link or '') else 'РБК' if 'rbc.' in (link or '') else ''),
+                'source': ('BITOBE' if 'bitobe' in (link or '').lower() or 'bitobe' in text.lower()
+                          else 'ВКонтакте' if 'vk.' in (link or '')
+                          else 'РБК' if 'rbc.' in (link or '')
+                          else 'Telegram' if 't.me' in (link or '')
+                          else ''),
                 'date': normalize_date(analysis.get('event_day','') + ' ' + analysis.get('event_month','') + ' ' + analysis.get('event_year','')) if analysis.get('event_day') else normalize_date(date),
                 'title': analysis.get('title') or text[:100],
                 'text': analysis.get('description') or text[:300],
@@ -637,8 +641,10 @@ def apply_json_edit(text, link, date, placements, user_comment='', analysis=None
             news[section].insert(0, new_item)
             ok = gh_write(NEWS_FILE, json.dumps(news, ensure_ascii=False, indent=2),
                          f"Новость: {text[:50]}", sha=sha)
-            print(f"apply_json_edit news write: {ok}")
-            if not ok: success = False
+            print(f"apply_json_edit news write: {ok} | section={section} | title={new_item.get('title','')[:40]}")
+            if not ok:
+                success = False
+                print(f"apply_json_edit: ОШИБКА записи news/{section}")
 
         elif placement.startswith('events-'):
             section = placement.replace('events-', '')
