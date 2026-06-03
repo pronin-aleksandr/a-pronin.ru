@@ -812,10 +812,10 @@ def do_confirm(pending, user_comment=''):
             {'text': '🔄 ОТКАТ',   'callback_data': 'confirm_rollback'}
         ]]}
         page_anchors = {
-            'news-consulting':   '#c-news-page',
-            'news-drone':        '#d-news-page',
-            'events-consulting': '#c-events-page',
-            'events-drone':      '#d-events-page',
+            'news-consulting':   '#news-consulting',
+            'news-drone':        '#news-drone',
+            'events-consulting': '#events-consulting',
+            'events-drone':      '#events-drone',
         }
         placements_for_link = pending['analysis'].get('placements', [])
         anchor = page_anchors.get(placements_for_link[0], '') if placements_for_link else ''
@@ -1008,14 +1008,53 @@ def process_commands():
         elif tl.startswith('отредактируй') or tl.startswith('измени описание') or tl.startswith('редактируй'):
             lines_edit = text.strip().split('\n')
             first_line = lines_edit[0]
-            new_desc = '\n'.join(lines_edit[1:]).strip() if len(lines_edit) > 1 else ''
+            # Новое описание — всё после первой строки, объединённое
+            new_desc = '\n'.join(l.strip() for l in lines_edit[1:] if l.strip())
             title_match = re.search(r'"([^"]+)"', first_line)
-            search_title = title_match.group(1) if title_match else ' '.join(first_line.split()[1:])
+            if title_match:
+                search_title = title_match.group(1)
+            else:
+                # Убираем служебные слова из начала команды
+                clean_cmd = re.sub(r'^(отредактируй|измени|редактируй)\s+(описание\s+)?(новости?\s+|мероприятия?\s+)?', '', first_line, flags=re.IGNORECASE).strip()
+                search_title = clean_cmd
             if not new_desc:
                 tg(f'✏️ Найду новость: <b>{search_title}</b>\n\nНапиши новое описание следующим сообщением.')
                 save_json('data/edit_pending.json', {'title': search_title, 'waiting_desc': True})
                 continue
-            tg("⚙️ Редактирую...")
+            # Если описание начинается с инструкции — просим Gemini написать текст
+            import base64 as _b64
+            _headers = {'Authorization': f'token {GITHUB_TOKEN}', 'Accept': 'application/vnd.github.v3+json'}
+            _r = requests.get(f'https://api.github.com/repos/{GITHUB_REPO}/contents/{NEWS_FILE}', headers=_headers, timeout=15)
+            news = {}
+            sha = None
+            if _r.status_code == 200:
+                sha = _r.json().get('sha')
+                _news_raw = _b64.b64decode(_r.json()['content'].replace('\n','').replace(' ','')).decode('utf-8')
+                news = json.loads(_news_raw)
+
+            instruction_markers = ['должно говориться', 'должно быть', 'напиши', 'сделай так', 'укажи', 'добавь что', 'упомяни', 'должно', 'это важно', 'статья', 'источник']
+            if any(m in new_desc.lower() for m in instruction_markers) or not any(c in new_desc for c in '.!?'):
+                tg("⚙️ Генерирую описание через AI...")
+                # Ищем ссылку у этой новости и читаем содержимое
+                article_text = ''
+                for sec in news:
+                    for ie in news[sec]:
+                        if search_title.lower() in ie.get('title','').lower():
+                            article_link = ie.get('link','')
+                            if article_link:
+                                article_content = fetch_url_content(article_link)
+                                if article_content:
+                                    article_text = article_content[:3000]
+                            break
+                    if article_text:
+                        break
+                if article_text:
+                    gemini_desc_prompt = f'Напиши краткое описание новости (2-3 предложения) для сайта.\n\nЗаголовок: {search_title}\n\nСодержимое статьи:\n{article_text}\n\nИнструкция: {new_desc}\n\nОтветь только готовым текстом описания, без кавычек и пояснений.'
+                else:
+                    gemini_desc_prompt = f'Напиши краткое описание новости (2-3 предложения) для сайта на основе инструкции:\n{new_desc}\n\nЗаголовок новости: {search_title}\n\nОтветь только готовым текстом описания, без кавычек и пояснений.'
+                generated = claude(gemini_desc_prompt, max_tokens=300)
+                if generated:
+                    new_desc = generated.strip()
             import base64 as _b64
             headers = {'Authorization': f'token {GITHUB_TOKEN}', 'Accept': 'application/vnd.github.v3+json'}
             r = requests.get(f'https://api.github.com/repos/{GITHUB_REPO}/contents/{NEWS_FILE}', headers=headers, timeout=15)
@@ -1023,6 +1062,9 @@ def process_commands():
                 sha = r.json().get('sha')
                 news_raw = _b64.b64decode(r.json()['content'].replace('\n','').replace(' ','')).decode('utf-8')
                 news = json.loads(news_raw)
+                found_edit = False
+            tg("⚙️ Редактирую...")
+            if sha and news:
                 found_edit = False
                 for section in news:
                     for item_edit in news[section]:
@@ -1032,11 +1074,36 @@ def process_commands():
                             break
                     if found_edit:
                         break
+                if not found_edit:
+                    # Пробуем найти через Gemini
+                    all_titles = [i.get('title','') for s in news for i in news[s]]
+                    titles_str = '\n'.join(f'{i+1}. {t}' for i,t in enumerate(all_titles))
+                    gemini_prompt = f'Из списка заголовков найди наиболее похожий на: "{search_title}"\n\nСписок:\n{titles_str}\n\nОтветь только точным текстом заголовка из списка, ничего лишнего.'
+                    found_title = claude(gemini_prompt, max_tokens=200)
+                    if found_title:
+                        found_title = found_title.strip().strip('"«»')
+                        for section in news:
+                            for item_edit in news[section]:
+                                if found_title.lower() in item_edit.get('title','').lower() or item_edit.get('title','').lower() in found_title.lower():
+                                    item_edit['text'] = new_desc
+                                    found_edit = True
+                                    break
+                            if found_edit:
+                                break
+
                 if found_edit:
                     ok = gh_write(NEWS_FILE, json.dumps(news, ensure_ascii=False, indent=2), f'Правка: {search_title[:50]}', sha=sha)
                     if ok:
-                        page_anchors = {'news-consulting':'#c-news-page','news-drone':'#d-news-page','events-consulting':'#c-events-page','events-drone':'#d-events-page'}
-                        tg(f"✅ Описание обновлено.\n🔗 {SITE_URL}")
+                        # Определяем раздел для ссылки
+                        edit_anchor = ''
+                        for sec in news:
+                            for ie in news[sec]:
+                                if ie.get('text') == new_desc:
+                                    edit_anchor = '#news-consulting' if sec == 'consulting' else '#news-drone'
+                                    break
+                            if edit_anchor:
+                                break
+                        tg(f"✅ Описание обновлено.\n🔗 {SITE_URL}{edit_anchor}")
                     else:
                         tg("❌ Ошибка записи.")
                 else:
