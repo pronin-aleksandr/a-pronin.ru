@@ -754,15 +754,21 @@ def propose_one(item):
     q_len  = queue_len()
     queue_note = f"\n\n📋 <i>Ещё в очереди: {q_len}</i>" if q_len > 0 else ""
 
+    title       = result.get('title', '')
+    description = result.get('description', '')
+    preview = ""
+    if title or description:
+        preview = f"\n\n📋 <b>Как будет выглядеть:</b>\n<b>{title}</b>\n<i>{description}</i>"
+
     tg(
         f"🤖 <b>Клод предлагает</b>\n\n"
         f"📌 <b>Источник:</b> {source}\n"
-        f"📝 <b>Материал:</b> {text[:300]}{'...' if len(text)>300 else ''}\n"
         + (f"🔗 <b>Ссылка:</b> {link}\n" if link else "") +
         f"\n💡 <b>Предложение:</b>\n{result.get('suggestion','')}\n\n"
-        f"<b>Разместить в:</b>\n{places}\n\n"
-        f"✅ <b>ДА</b>  |  ❌ <b>НЕТ</b>  |  ✏️ <i>или напиши/надиктуй правки</i>"
-        + queue_note
+        f"<b>Разместить в:</b>\n{places}"
+        + preview
+        + queue_note +
+        f"\n\n✅ <b>ДА</b>  |  ❌ <b>НЕТ</b>  |  ✏️ <i>или напиши/надиктуй правки</i>"
     )
     pending_save(text, link, date, source, result, prev_sha)
 
@@ -805,9 +811,19 @@ def do_confirm(pending, user_comment=''):
             {'text': '✅ ПРИНЯТО', 'callback_data': 'confirm_done'},
             {'text': '🔄 ОТКАТ',   'callback_data': 'confirm_rollback'}
         ]]}
+        page_anchors = {
+            'news-consulting':   '#c-news-page',
+            'news-drone':        '#d-news-page',
+            'events-consulting': '#c-events-page',
+            'events-drone':      '#d-events-page',
+        }
+        placements_for_link = pending['analysis'].get('placements', [])
+        anchor = page_anchors.get(placements_for_link[0], '') if placements_for_link else ''
+        site_link = SITE_URL + anchor
+
         tg(
             f"✅ <b>Готово! Сайт обновлён.</b>\n\n"
-            f"🔗 {SITE_URL}"
+            f"🔗 {site_link}"
             + queue_note,
             reply_markup=rollback_btn
         )
@@ -988,6 +1004,45 @@ def process_commands():
                 '/status — очередь и текущее состояние\n'
                 '/help — эта справка'
             )
+
+        elif tl.startswith('отредактируй') or tl.startswith('измени описание') or tl.startswith('редактируй'):
+            lines_edit = text.strip().split('\n')
+            first_line = lines_edit[0]
+            new_desc = '\n'.join(lines_edit[1:]).strip() if len(lines_edit) > 1 else ''
+            title_match = re.search(r'"([^"]+)"', first_line)
+            search_title = title_match.group(1) if title_match else ' '.join(first_line.split()[1:])
+            if not new_desc:
+                tg(f'✏️ Найду новость: <b>{search_title}</b>\n\nНапиши новое описание следующим сообщением.')
+                save_json('data/edit_pending.json', {'title': search_title, 'waiting_desc': True})
+                continue
+            tg("⚙️ Редактирую...")
+            import base64 as _b64
+            headers = {'Authorization': f'token {GITHUB_TOKEN}', 'Accept': 'application/vnd.github.v3+json'}
+            r = requests.get(f'https://api.github.com/repos/{GITHUB_REPO}/contents/{NEWS_FILE}', headers=headers, timeout=15)
+            if r.status_code == 200:
+                sha = r.json().get('sha')
+                news_raw = _b64.b64decode(r.json()['content'].replace('\n','').replace(' ','')).decode('utf-8')
+                news = json.loads(news_raw)
+                found_edit = False
+                for section in news:
+                    for item_edit in news[section]:
+                        if search_title.lower() in item_edit.get('title','').lower():
+                            item_edit['text'] = new_desc
+                            found_edit = True
+                            break
+                    if found_edit:
+                        break
+                if found_edit:
+                    ok = gh_write(NEWS_FILE, json.dumps(news, ensure_ascii=False, indent=2), f'Правка: {search_title[:50]}', sha=sha)
+                    if ok:
+                        page_anchors = {'news-consulting':'#c-news-page','news-drone':'#d-news-page','events-consulting':'#c-events-page','events-drone':'#d-events-page'}
+                        tg(f"✅ Описание обновлено.\n🔗 {SITE_URL}")
+                    else:
+                        tg("❌ Ошибка записи.")
+                else:
+                    tg(f"⚠️ Не нашёл новость: <b>{search_title}</b>")
+            else:
+                tg("❌ Не удалось прочитать news.json")
 
         elif text.startswith('/status'):
             p     = pending_load()
@@ -1307,4 +1362,10 @@ def run():
 
 
 if __name__ == '__main__':
-    run()
+    import sys
+    if '--commands-only' in sys.argv:
+        print(f"=== Команды {__import__('datetime').datetime.now().strftime('%d.%m.%Y %H:%M')} ===")
+        process_commands()
+        print("=== Готово ===")
+    else:
+        run()
