@@ -557,6 +557,7 @@ def analyze_batch(items):
     "placements": [],
     "title": "ОБЯЗАТЕЛЬНО: краткий заголовок материала на русском (из содержимого ссылки, не из команды пользователя)",
     "description": "ОБЯЗАТЕЛЬНО: описание 1-2 предложения на русском (из содержимого ссылки)",
+    "news_date": "дата публикации новости из содержимого статьи в формате ДД месяц ГГГГ на русском, например: 31 мая 2026. Если дата не найдена — пустая строка.",
     "event_day": "день числом или диапазон типа 28-29 (только для мероприятий)",
     "event_month": "месяц сокращённо на русском: янв/фев/мар/апр/май/июн/июл/авг/сен/окт/ноя/дек (только для мероприятий)",
     "event_year": "год четырьмя цифрами (только для мероприятий)"
@@ -633,7 +634,7 @@ def apply_json_edit(text, link, date, placements, user_comment='', analysis=None
                           else 'РБК' if 'rbc.' in (link or '')
                           else 'Telegram' if 't.me' in (link or '')
                           else ''),
-                'date': normalize_date(analysis.get('event_day','') + ' ' + analysis.get('event_month','') + ' ' + analysis.get('event_year','')) if analysis.get('event_day') else normalize_date(date),
+                'date': normalize_date(analysis.get('news_date','')) if analysis.get('news_date') else (normalize_date(analysis.get('event_day','') + ' ' + analysis.get('event_month','') + ' ' + analysis.get('event_year','')) if analysis.get('event_day') else normalize_date(date)),
                 'title': analysis.get('title') or text[:100],
                 'text': analysis.get('description') or text[:300],
                 'link': link or ''
@@ -698,12 +699,12 @@ def apply_json_edit(text, link, date, placements, user_comment='', analysis=None
 
 # ── Pending ─────────────────────────────────────────────────
 
-def pending_save(text, link, date, source, analysis, prev_sha):
+def pending_save(text, link, date, source, analysis, prev_sha, status='waiting_confirm'):
     save_json(PENDING_FILE, {
         'text': text, 'link': link, 'date': date,
         'source': source, 'analysis': analysis,
         'prev_sha': prev_sha,
-        'status': 'waiting_confirm',
+        'status': status,
         'created': datetime.now().isoformat()
     })
 
@@ -770,7 +771,28 @@ def propose_one(item):
         + queue_note +
         f"\n\n✅ <b>ДА</b>  |  ❌ <b>НЕТ</b>  |  ✏️ <i>или напиши/надиктуй правки</i>"
     )
-    pending_save(text, link, date, source, result, prev_sha)
+    # Проверяем дату
+    found_date = result.get('news_date', '') or (
+        result.get('event_day','') + ' ' + result.get('event_month','') + ' ' + result.get('event_year','')
+    ).strip()
+
+    if found_date:
+        # Дата найдена — показываем её и просим подтвердить
+        date_btns = {'inline_keyboard': [[
+            {'text': f'✅ {found_date}', 'callback_data': f'date_confirm_{found_date}'},
+            {'text': '✏️ Ввести вручную', 'callback_data': 'date_manual'}
+        ]]}
+        tg(f"📅 <b>Дата материала:</b> {found_date}\n\nПодтверди или введи вручную:", reply_markup=date_btns)
+        pending_save(text, link, found_date, source, result, prev_sha, status='waiting_date')
+    else:
+        # Дата не найдена — спрашиваем
+        today = datetime.now().strftime('%d %B %Y')
+        date_btns = {'inline_keyboard': [[
+            {'text': f'📅 Сегодня ({date})', 'callback_data': f'date_confirm_{date}'},
+            {'text': '✏️ Ввести вручную', 'callback_data': 'date_manual'}
+        ]]}
+        tg(f"📅 <b>Дата не найдена.</b> Укажи дату публикации:", reply_markup=date_btns)
+        pending_save(text, link, date, source, result, prev_sha, status='waiting_date')
 
 
 # ── Подтверждение и запись ───────────────────────────────────
@@ -896,7 +918,32 @@ def process_commands():
                 tg_answer_callback(cb['id'])
                 cb_data = cb.get('data', '')
                 pending = pending_load()
-                if cb_data == 'confirm_yes' and pending and pending['status'] == 'waiting_confirm':
+                if cb_data.startswith('date_confirm_') and pending and pending.get('status') == 'waiting_date':
+                    confirmed_date = cb_data.replace('date_confirm_', '')
+                    pending['date'] = confirmed_date
+                    pending['status'] = 'waiting_confirm'
+                    save_json(PENDING_FILE, pending)
+                    # Показываем предложение с подтверждённой датой
+                    placements = pending['analysis'].get('placements', [])
+                    places = '\n'.join(f"• {PLACEMENT_LABELS.get(p,p)}" for p in placements)
+                    title = pending['analysis'].get('title', '')
+                    description = pending['analysis'].get('description', '')
+                    preview = f"\n\n📋 <b>Как будет выглядеть:</b>\n<b>{title}</b>\n<i>{description}</i>" if title or description else ""
+                    q_len = queue_len()
+                    queue_note = f"\n\n📋 <i>Ещё в очереди: {q_len}</i>" if q_len > 0 else ""
+                    tg(
+                        f"🤖 <b>Клод предлагает</b>\n\n"
+                        f"📌 <b>Источник:</b> {pending['source']}\n"
+                        + (f"🔗 <b>Ссылка:</b> {pending['link']}\n" if pending.get('link') else "") +
+                        f"📅 <b>Дата:</b> {confirmed_date}\n"
+                        f"\n💡 <b>Предложение:</b>\n{pending['analysis'].get('suggestion','')}\n\n"
+                        f"<b>Разместить в:</b>\n{places}"
+                        + preview + queue_note +
+                        f"\n\n✅ <b>ДА</b>  |  ❌ <b>НЕТ</b>  |  ✏️ <i>или напиши/надиктуй правки</i>"
+                    )
+                elif cb_data == 'date_manual' and pending and pending.get('status') == 'waiting_date':
+                    tg("✏️ Введи дату вручную в формате: <b>31 мая 2026</b>")
+                elif cb_data == 'confirm_yes' and pending and pending['status'] == 'waiting_confirm':
                     do_confirm(pending)
                 elif cb_data == 'confirm_no' and pending and pending['status'] == 'waiting_confirm':
                     pending_clear()
@@ -956,6 +1003,35 @@ def process_commands():
         print(f"← {text[:100]}")
         tl      = text.lower().strip()
         pending = pending_load()
+
+        # ── Ответ на ожидание даты ──
+        if pending and pending.get('status') == 'waiting_date':
+            # Нормализуем дату через Gemini
+            raw_date = text.strip()
+            norm_prompt = f'Преобразуй дату "{raw_date}" в формат "ДД месяц ГГГГ" на русском языке, например "31 мая 2026". Ответь только датой, без пояснений.'
+            normalized = claude(norm_prompt, max_tokens=30)
+            confirmed_date = normalized.strip() if normalized else raw_date
+            pending['date'] = confirmed_date
+            pending['status'] = 'waiting_confirm'
+            save_json(PENDING_FILE, pending)
+            placements = pending['analysis'].get('placements', [])
+            places = '\n'.join(f"• {PLACEMENT_LABELS.get(p,p)}" for p in placements)
+            title = pending['analysis'].get('title', '')
+            description = pending['analysis'].get('description', '')
+            preview = f"\n\n📋 <b>Как будет выглядеть:</b>\n<b>{title}</b>\n<i>{description}</i>" if title or description else ""
+            q_len = queue_len()
+            queue_note = f"\n\n📋 <i>Ещё в очереди: {q_len}</i>" if q_len > 0 else ""
+            tg(
+                f"🤖 <b>Клод предлагает</b>\n\n"
+                f"📌 <b>Источник:</b> {pending['source']}\n"
+                + (f"🔗 <b>Ссылка:</b> {pending['link']}\n" if pending.get('link') else "") +
+                f"📅 <b>Дата:</b> {confirmed_date}\n"
+                f"\n💡 <b>Предложение:</b>\n{pending['analysis'].get('suggestion','')}\n\n"
+                f"<b>Разместить в:</b>\n{places}"
+                + preview + queue_note +
+                f"\n\n✅ <b>ДА</b>  |  ❌ <b>НЕТ</b>  |  ✏️ <i>или напиши/надиктуй правки</i>"
+            )
+            continue
 
         # ── Ответы на ожидающее подтверждение ──
         if pending and pending['status'] == 'waiting_confirm':
