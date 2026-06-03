@@ -1010,6 +1010,59 @@ def show_done(site_link, queue_note=''):
     )
 
 
+# ── Снапшот для отката ───────────────────────────────────────
+
+SNAPSHOT_FILE = 'data/snapshot.json'
+
+def snapshot_save():
+    """Сохраняет текущее состояние news.json и events.json."""
+    try:
+        headers = {'Authorization': f'token {GITHUB_TOKEN}',
+                   'Accept': 'application/vnd.github.v3+json'}
+        snapshot = {}
+        for filepath in [NEWS_FILE, EVENTS_FILE]:
+            r = requests.get(
+                f'https://api.github.com/repos/{GITHUB_REPO}/contents/{filepath}',
+                headers=headers, timeout=15)
+            if r.status_code == 200:
+                snapshot[filepath] = {
+                    'content': r.json()['content'],
+                    'sha':     r.json()['sha']
+                }
+        save_json(SNAPSHOT_FILE, snapshot)
+        print(f"snapshot_save: OK")
+    except Exception as e:
+        print(f"snapshot_save ошибка: {e}")
+
+def snapshot_restore():
+    """Восстанавливает news.json и events.json из снапшота."""
+    snapshot = load_json(SNAPSHOT_FILE, {})
+    if not snapshot:
+        return False
+    headers = {'Authorization': f'token {GITHUB_TOKEN}',
+               'Accept': 'application/vnd.github.v3+json'}
+    success = True
+    for filepath, data in snapshot.items():
+        r = requests.get(
+            f'https://api.github.com/repos/{GITHUB_REPO}/contents/{filepath}',
+            headers=headers, timeout=15)
+        if r.status_code != 200:
+            success = False; continue
+        current_sha = r.json().get('sha')
+        r2 = requests.put(
+            f'https://api.github.com/repos/{GITHUB_REPO}/contents/{filepath}',
+            headers=headers,
+            json={
+                'message': f'Rollback: восстановление {filepath}',
+                'content': data['content'],
+                'sha': current_sha
+            }, timeout=30)
+        if r2.status_code not in (200, 201):
+            print(f"snapshot_restore ошибка {filepath}: {r2.text[:200]}")
+            success = False
+    return success
+
+
 # ── Выполнение действия ──────────────────────────────────────
 
 def execute_action(action):
@@ -1017,6 +1070,9 @@ def execute_action(action):
     atype   = action.get('type')
     section = action.get('section', '')
     data    = action.get('data', {})
+
+    # Сохраняем снапшот перед любым изменением
+    snapshot_save()
 
     headers = {'Authorization': f'token {GITHUB_TOKEN}',
                'Accept': 'application/vnd.github.v3+json'}
@@ -1161,76 +1217,43 @@ def execute_action(action):
 # ── do_rollback (универсальный) ──────────────────────────────
 
 def do_rollback(pending):
-    """Откат: поддерживает и старый pending (analysis.placements) и новый (action)."""
+    """Откат через снапшот — работает для любого действия."""
     tg("🔄 <b>Откатываю...</b>")
+
+    # Новый флоу — восстанавливаем из снапшота
+    if pending.get('action'):
+        ok = snapshot_restore()
+        if ok:
+            pending_clear()
+            tg(f"✅ <b>Откат выполнен!</b>\n🔗 {SITE_URL}")
+        else:
+            tg("❌ Не удалось откатить — снапшот недоступен.")
+        return
+
+    # Старый флоу — placements (обратная совместимость)
     success = True
-
-    # Новый флоу — action от Gemini
-    action = pending.get('action')
-    if action:
-        atype   = action.get('type', '')
-        section = action.get('section', '')
-        item_id = str(action.get('id') or action.get('data', {}).get('id', ''))
-
-        headers = {'Authorization': f'token {GITHUB_TOKEN}',
-                   'Accept': 'application/vnd.github.v3+json'}
-
-        if atype in ('add_news',):
-            r = requests.get(f'https://api.github.com/repos/{GITHUB_REPO}/contents/{NEWS_FILE}',
-                             headers=headers, timeout=15)
-            if r.status_code == 200:
-                sha  = r.json().get('sha')
-                news = json.loads(base64.b64decode(
-                    r.json()['content'].replace('\n','').replace(' ','')).decode('utf-8'))
+    placements = pending.get('analysis', {}).get('placements', [])
+    for placement in placements:
+        if placement.startswith('news-'):
+            section  = placement.replace('news-', '')
+            raw, sha = gh_read(NEWS_FILE)
+            if raw:
+                news = json.loads(raw)
                 if news.get(section):
                     news[section].pop(0)
                     ok = gh_write(NEWS_FILE, json.dumps(news, ensure_ascii=False, indent=2),
                                  'Rollback новости', sha=sha)
                     if not ok: success = False
-
-        elif atype in ('add_event',):
-            r = requests.get(f'https://api.github.com/repos/{GITHUB_REPO}/contents/{EVENTS_FILE}',
-                             headers=headers, timeout=15)
-            if r.status_code == 200:
-                sha    = r.json().get('sha')
-                events = json.loads(base64.b64decode(
-                    r.json()['content'].replace('\n','').replace(' ','')).decode('utf-8'))
-                etype = action.get('data', {}).get('type', 'upcoming')
-                if events.get(section, {}).get(etype):
-                    events[section][etype].pop(0)
+        elif placement.startswith('events-'):
+            section  = placement.replace('events-', '')
+            raw, sha = gh_read(EVENTS_FILE)
+            if raw:
+                events = json.loads(raw)
+                if events.get(section, {}).get('upcoming'):
+                    events[section]['upcoming'].pop(0)
                     ok = gh_write(EVENTS_FILE, json.dumps(events, ensure_ascii=False, indent=2),
                                  'Rollback мероприятия', sha=sha)
                     if not ok: success = False
-
-        elif atype in ('edit', 'delete', 'move_event'):
-            tg("⚠️ Откат этого действия не поддерживается.")
-            pending_clear()
-            return
-
-    else:
-        # Старый флоу — placements
-        placements = pending.get('analysis', {}).get('placements', [])
-        for placement in placements:
-            if placement.startswith('news-'):
-                section  = placement.replace('news-', '')
-                raw, sha = gh_read(NEWS_FILE)
-                if raw:
-                    news = json.loads(raw)
-                    if news.get(section):
-                        news[section].pop(0)
-                        ok = gh_write(NEWS_FILE, json.dumps(news, ensure_ascii=False, indent=2),
-                                     'Rollback новости', sha=sha)
-                        if not ok: success = False
-            elif placement.startswith('events-'):
-                section  = placement.replace('events-', '')
-                raw, sha = gh_read(EVENTS_FILE)
-                if raw:
-                    events = json.loads(raw)
-                    if events.get(section, {}).get('upcoming'):
-                        events[section]['upcoming'].pop(0)
-                        ok = gh_write(EVENTS_FILE, json.dumps(events, ensure_ascii=False, indent=2),
-                                     'Rollback мероприятия', sha=sha)
-                        if not ok: success = False
 
     if success:
         pending_clear()
