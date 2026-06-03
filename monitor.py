@@ -1091,19 +1091,25 @@ def execute_action(action):
                 edit_id = str(action.get('id') or edit_data.get('id', ''))
                 if not edit_id:
                     continue
+                # Ищем запись во всех разделах и типах
                 for sec, val in obj.items():
-                    items_flat = val if isinstance(val, list) else \
-                        [i for sub in val.values() for i in (sub if isinstance(sub, list) else [])]
-                    for item in items_flat:
+                    if isinstance(val, list):
+                        items_list = val
+                    elif isinstance(val, dict):
+                        items_list = [i for sub in val.values() for i in (sub if isinstance(sub, list) else [])]
+                    else:
+                        continue
+                    for item in items_list:
                         if str(item.get('id')) == edit_id:
                             for k, v in edit_data.items():
                                 if k != 'id': item[k] = v
                             found_sec = sec
                             changed   = True
                             break
+                # Не прерываем внешний цикл — обрабатываем все edits
 
             if changed:
-                ok = write_json_file(filepath, obj, f"Правка (batch)", sha)
+                ok = write_json_file(filepath, obj, f"Правка (batch {len(edits)})", sha)
                 return ok, SITE_URL + ANCHORS.get(f'{anchor_pfx}-{found_sec}', '')
         return False, ''
 
