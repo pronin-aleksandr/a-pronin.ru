@@ -986,9 +986,10 @@ def process_commands():
                 if cb_data.startswith('date_confirm_') and pending and pending.get('status') == 'waiting_date':
                     confirmed_date = cb_data.replace('date_confirm_', '')
                     pending['date'] = confirmed_date
+                    pending['date_confirmed'] = True
                     pending['status'] = 'waiting_confirm'
                     save_json(PENDING_FILE, pending)
-                    _send_proposal(pending)
+                    do_confirm(pending)
                 elif cb_data == 'date_manual' and pending and pending.get('status') == 'waiting_date':
                     tg("✏️ Введи дату вручную в формате: <b>31 мая 2026</b>")
                 elif cb_data == 'confirm_yes' and pending and pending['status'] == 'waiting_confirm':
@@ -1064,9 +1065,11 @@ def process_commands():
             normalized = claude(norm_prompt, max_tokens=30)
             confirmed_date = normalized.strip() if normalized else raw_date
             pending['date'] = confirmed_date
+            pending['date_confirmed'] = True
             pending['status'] = 'waiting_confirm'
             save_json(PENDING_FILE, pending)
-            _send_proposal(pending)
+            user_comment = pending.get('user_comment', '')
+            do_confirm(pending, user_comment=user_comment)
             continue
 
         # ── Ответы на ожидающее подтверждение ──
