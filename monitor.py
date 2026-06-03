@@ -716,66 +716,93 @@ def pending_clear():
         os.remove(PENDING_FILE)
 
 
-# ── Отправка одного предложения пользователю ────────────────
+# ── Единый флоу предложения ──────────────────────────────────
 
-def propose_one(item):
-    """Анализирует один элемент из очереди и отправляет предложение."""
-    text   = item['text']
-    link   = item['link']
-    source = item['source']
+def _send_proposal(pending):
+    """Отправляет карточку предложения с кнопками ДА/НЕТ.
+    Используется как при первом показе, так и после правок/смены даты.
+    Не меняет pending — только отображает."""
+    analysis   = pending.get('analysis', {})
+    source     = pending.get('source', '')
+    link       = pending.get('link', '')
+    date       = pending.get('date', '')
+    placements = analysis.get('placements', [])
 
-    tg(f"🔍 <b>Анализирую...</b>\n<i>{text[:150]}</i>")
-
-    _, prev_sha = gh_read(INDEX_FILE)
-    result = analyze(text, link, source)
-
-    if not result:
-        tg("❌ Ошибка анализа. Пропускаю.")
-        # Пробуем следующий из очереди в следующем запуске
-        return
-
-    if result.get('found_on_site'):
-        tg(f"ℹ️ <b>Уже есть на сайте</b>\n{result.get('reason','')}")
-        # Берём следующий из очереди
-        next_item = queue_pop()
-        if next_item:
-            propose_one(next_item)
-        return
-
-    placements = result.get('placements', [])
-    if not placements:
-        tg(f"ℹ️ Клод: размещать не нужно\n{result.get('reason','')}")
-        next_item = queue_pop()
-        if next_item:
-            propose_one(next_item)
-        return
-
-    date   = datetime.now().strftime('%d %b %Y')
     places = '\n'.join(f"• {PLACEMENT_LABELS.get(p,p)}" for p in placements)
-    q_len  = queue_len()
+
+    analyzed  = load_json(ANALYZED_FILE, [])
+    q_len     = queue_len() + len(analyzed)
     queue_note = f"\n\n📋 <i>Ещё в очереди: {q_len}</i>" if q_len > 0 else ""
 
-    title       = result.get('title', '')
-    description = result.get('description', '')
-    preview = ""
+    title       = analysis.get('title', '')
+    description = analysis.get('description', '')
+    preview = ''
     if title or description:
-        preview = f"\n\n📋 <b>Как будет выглядеть:</b>\n<b>{title}</b>\n<i>{description}</i>"
+        preview = f"\n\n📋 <b>Как будет выглядеть:</b>\n<b>{title}</b>"
+        if description:
+            preview += f"\n<i>{description}</i>"
 
-    confirm_btns = {'inline_keyboard': [[
+    date_line = f"📅 <b>Дата:</b> {date}\n" if date else ""
+
+    buttons = {'inline_keyboard': [[
         {'text': '✅ ДА', 'callback_data': 'confirm_yes'},
-        {'text': '❌ НЕТ', 'callback_data': 'confirm_no'}
+        {'text': '❌ НЕТ', 'callback_data': 'confirm_no'},
     ]]}
+
     tg(
         f"🤖 <b>Клод предлагает</b>\n\n"
         f"📌 <b>Источник:</b> {source}\n"
-        + (f"🔗 <b>Ссылка:</b> {link}\n" if link else "") +
-        f"\n💡 <b>Предложение:</b>\n{result.get('suggestion','')}\n\n"
+        + (f"🔗 <b>Ссылка:</b> {link}\n" if link else "")
+        + date_line
+        + f"\n💡 <b>Предложение:</b>\n{analysis.get('suggestion','')}\n\n"
         f"<b>Разместить в:</b>\n{places}"
         + preview
         + queue_note,
-        reply_markup=confirm_btns
+        reply_markup=buttons
     )
-    pending_save(text, link, date, source, result, prev_sha)
+    print(f"_send_proposal: source={source[:50]} placements={placements}")
+
+
+def propose(item):
+    """Единая точка входа для показа предложения пользователю.
+    Принимает item из любой очереди (manual_queue или analyzed).
+    Если у item нет analysis — запускает analyze() сам."""
+
+    text   = item.get('text', '')
+    link   = item.get('link', '')
+    source = item.get('source', '')
+
+    # Если анализ уже есть (из analyzed.json) — используем его
+    if item.get('placements') or item.get('suggestion'):
+        analysis = item
+    else:
+        tg(f"🔍 <b>Анализирую...</b>\n<i>{text[:150]}</i>")
+        analysis = analyze(text, link, source)
+
+        if not analysis:
+            tg("❌ Ошибка анализа. Пропускаю.")
+            return
+
+        if analysis.get('found_on_site'):
+            tg(f"ℹ️ <b>Уже есть на сайте</b>\n{analysis.get('reason','')}")
+            next_item = queue_pop()
+            if next_item:
+                propose(next_item)
+            return
+
+        if not analysis.get('placements'):
+            tg(f"ℹ️ Клод: размещать не нужно\n{analysis.get('reason','')}")
+            next_item = queue_pop()
+            if next_item:
+                propose(next_item)
+            return
+
+    _, prev_sha = gh_read(INDEX_FILE)
+    date = item.get('date', datetime.now().strftime('%d %b %Y'))
+
+    pending_save(text, link, date, source, analysis, prev_sha)
+    pending = pending_load()
+    _send_proposal(pending)
 
 
 # ── Подтверждение и запись ───────────────────────────────────
@@ -861,11 +888,11 @@ def do_confirm(pending, user_comment=''):
         # После подтверждения — сначала проверяем приоритетную очередь
         manual_item = manual_queue_pop()
         if manual_item:
-            propose_one(manual_item)
+            propose(manual_item)
         elif analyzed:
             next_item = analyzed.pop(0)
             save_json(ANALYZED_FILE, analyzed)
-            propose_one_analyzed(next_item)
+            propose(next_item)
     else:
         tg("❌ Ошибка при записи в GitHub.")
 
@@ -932,24 +959,7 @@ def process_commands():
                     pending['date'] = confirmed_date
                     pending['status'] = 'waiting_confirm'
                     save_json(PENDING_FILE, pending)
-                    # Показываем предложение с подтверждённой датой
-                    placements = pending['analysis'].get('placements', [])
-                    places = '\n'.join(f"• {PLACEMENT_LABELS.get(p,p)}" for p in placements)
-                    title = pending['analysis'].get('title', '')
-                    description = pending['analysis'].get('description', '')
-                    preview = f"\n\n📋 <b>Как будет выглядеть:</b>\n<b>{title}</b>\n<i>{description}</i>" if title or description else ""
-                    q_len = queue_len()
-                    queue_note = f"\n\n📋 <i>Ещё в очереди: {q_len}</i>" if q_len > 0 else ""
-                    tg(
-                        f"🤖 <b>Клод предлагает</b>\n\n"
-                        f"📌 <b>Источник:</b> {pending['source']}\n"
-                        + (f"🔗 <b>Ссылка:</b> {pending['link']}\n" if pending.get('link') else "") +
-                        f"📅 <b>Дата:</b> {confirmed_date}\n"
-                        f"\n💡 <b>Предложение:</b>\n{pending['analysis'].get('suggestion','')}\n\n"
-                        f"<b>Разместить в:</b>\n{places}"
-                        + preview + queue_note +
-                        f"\n\n✅ <b>ДА</b>  |  ❌ <b>НЕТ</b>  |  ✏️ <i>или напиши/надиктуй правки</i>"
-                    )
+                    _send_proposal(pending)
                 elif cb_data == 'date_manual' and pending and pending.get('status') == 'waiting_date':
                     tg("✏️ Введи дату вручную в формате: <b>31 мая 2026</b>")
                 elif cb_data == 'confirm_yes' and pending and pending['status'] == 'waiting_confirm':
@@ -962,25 +972,25 @@ def process_commands():
                     # Сначала приоритетная очередь
                     manual_item = manual_queue_pop()
                     if manual_item:
-                        propose_one(manual_item)
+                        propose(manual_item)
                     else:
                         analyzed = load_json(ANALYZED_FILE, [])
                         if analyzed:
                             first = analyzed.pop(0)
                             save_json(ANALYZED_FILE, analyzed)
-                            propose_one_analyzed(first)
+                            propose(first)
                 elif cb_data == 'confirm_done' and pending and pending['status'] == 'done':
                     pending_clear()
                     tg("👍 Принято.")
                     manual_item = manual_queue_pop()
                     if manual_item:
-                        propose_one(manual_item)
+                        propose(manual_item)
                     else:
                         analyzed = load_json(ANALYZED_FILE, [])
                         if analyzed:
                             first = analyzed.pop(0)
                             save_json(ANALYZED_FILE, analyzed)
-                            propose_one_analyzed(first)
+                            propose(first)
                 elif cb_data == 'confirm_rollback' and pending and pending['status'] == 'done':
                     do_rollback(pending)
             continue
@@ -1015,33 +1025,19 @@ def process_commands():
         tl      = text.lower().strip()
         pending = pending_load()
 
-        # ── Ответ на ожидание даты ──
+        # ── Ответ на ожидание даты (ручной ввод текстом или голосом) ──
         if pending and pending.get('status') == 'waiting_date':
-            # Нормализуем дату через Gemini
             raw_date = text.strip()
-            norm_prompt = f'Преобразуй дату "{raw_date}" в формат "ДД месяц ГГГГ" на русском языке, например "31 мая 2026". Ответь только датой, без пояснений.'
+            norm_prompt = (
+                f'Преобразуй дату "{raw_date}" в формат "ДД месяц ГГГГ" на русском языке, '
+                f'например "31 мая 2026". Ответь только датой, без пояснений.'
+            )
             normalized = claude(norm_prompt, max_tokens=30)
             confirmed_date = normalized.strip() if normalized else raw_date
             pending['date'] = confirmed_date
             pending['status'] = 'waiting_confirm'
             save_json(PENDING_FILE, pending)
-            placements = pending['analysis'].get('placements', [])
-            places = '\n'.join(f"• {PLACEMENT_LABELS.get(p,p)}" for p in placements)
-            title = pending['analysis'].get('title', '')
-            description = pending['analysis'].get('description', '')
-            preview = f"\n\n📋 <b>Как будет выглядеть:</b>\n<b>{title}</b>\n<i>{description}</i>" if title or description else ""
-            q_len = queue_len()
-            queue_note = f"\n\n📋 <i>Ещё в очереди: {q_len}</i>" if q_len > 0 else ""
-            tg(
-                f"🤖 <b>Клод предлагает</b>\n\n"
-                f"📌 <b>Источник:</b> {pending['source']}\n"
-                + (f"🔗 <b>Ссылка:</b> {pending['link']}\n" if pending.get('link') else "") +
-                f"📅 <b>Дата:</b> {confirmed_date}\n"
-                f"\n💡 <b>Предложение:</b>\n{pending['analysis'].get('suggestion','')}\n\n"
-                f"<b>Разместить в:</b>\n{places}"
-                + preview + queue_note +
-                f"\n\n✅ <b>ДА</b>  |  ❌ <b>НЕТ</b>  |  ✏️ <i>или напиши/надиктуй правки</i>"
-            )
+            _send_proposal(pending)
             continue
 
         # ── Ответы на ожидающее подтверждение ──
@@ -1054,7 +1050,7 @@ def process_commands():
                 # Берём следующий из очереди
                 next_item = queue_pop()
                 if next_item:
-                    propose_one(next_item)
+                    propose(next_item)
             elif tl in ('откат', 'rollback', 'отмена'):
                 tg("⚠️ Изменения ещё не применялись — нечего откатывать.")
             else:
@@ -1073,7 +1069,7 @@ def process_commands():
                 # Берём следующий из очереди
                 next_item = queue_pop()
                 if next_item:
-                    propose_one(next_item)
+                    propose(next_item)
 
         # ── Команды ──
         if text.startswith('/help') or text.startswith('/start'):
@@ -1236,7 +1232,7 @@ def process_commands():
                 if pending_load() is None:
                     item = manual_queue_pop()
                     if item:
-                        propose_one(item)
+                        propose(item)
                         break  # Прерываем цикл — ждём ответа пользователя
                 else:
                     tg(f"📋 Твой материал в приоритете. Сначала ответь на текущее предложение — потом сразу перейдём к твоему.")
@@ -1361,7 +1357,7 @@ def process_queue_batch():
     manual_item = manual_queue_pop()
     if manual_item:
         print(f"process_queue_batch: приоритет — материал от пользователя")
-        propose_one(manual_item)
+        propose(manual_item)
         return
 
     # Проверяем — есть ли уже проанализированные материалы
@@ -1375,7 +1371,7 @@ def process_queue_batch():
             # Уже на сайте — берём следующий
             process_queue_batch()
             return
-        propose_one_analyzed(item)
+        propose(item)
         return
 
     # Берём всё из очереди
@@ -1425,58 +1421,7 @@ def process_queue_batch():
     if first.get('skip'):
         process_queue_batch()
     else:
-        propose_one_analyzed(first)
-
-
-def propose_one_analyzed(item):
-    """Отправляет пользователю предложение по уже проанализированному материалу."""
-    text      = item.get('text', '')
-    link      = item.get('link', '')
-    source    = item.get('source', '')
-    placements = item.get('placements', [])
-    analyzed  = load_json(ANALYZED_FILE, [])
-    q_len     = queue_len() + len(analyzed)
-
-    places = '\n'.join(f"• {PLACEMENT_LABELS.get(p,p)}" for p in placements)
-    queue_note = f"\n\n📋 <i>Ещё в очереди: {q_len}</i>" if q_len > 0 else ""
-
-    buttons = {
-        'inline_keyboard': [[
-            {'text': '✅ ДА', 'callback_data': 'confirm_yes'},
-            {'text': '❌ НЕТ', 'callback_data': 'confirm_no'},
-        ]]
-    }
-    # Формируем превью заголовка и подстрочника из анализа
-    preview_title = item.get('title', '') or item.get('suggested_title', '')
-    preview_desc  = item.get('description', '') or item.get('suggested_description', '')
-    
-    # Если Gemini не вернул превью — генерируем из suggestion
-    if not preview_title and item.get('suggestion'):
-        preview_title = item['suggestion'].split('.')[0][:80]
-    
-    print(f"propose_one_analyzed preview_title={preview_title[:50] if preview_title else 'пусто'}")
-    
-    preview_block = ''
-    if preview_title:
-        preview_block = f"\n\n📋 <b>Как будет выглядеть:</b>\n<b>{preview_title}</b>"
-        if preview_desc:
-            preview_block += f"\n<i>{preview_desc}</i>"
-
-    tg(
-        f"🤖 <b>Клод предлагает</b>\n\n"
-        f"📌 <b>Источник:</b> {source}\n"
-        + (f"🔗 <b>Ссылка:</b> {link}\n" if link else "") +
-        f"\n💡 <b>Предложение:</b>\n{item.get('suggestion','')}\n\n"
-        f"<b>Разместить в:</b>\n{places}"
-        + preview_block
-        + queue_note,
-        reply_markup=buttons
-    )
-
-    _, prev_sha = gh_read(INDEX_FILE)
-    pending_save(text, link, item.get('date', datetime.now().strftime('%d %b %Y')),
-                 source, item, prev_sha)
-    print(f"propose_one_analyzed: ожидаю подтверждения от пользователя")
+        propose(first)
 
 
 # ── Главная ─────────────────────────────────────────────────
