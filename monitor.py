@@ -1076,6 +1076,7 @@ def process_commands():
 
         # ── Ответы на ожидающее подтверждение ──
         if pending and pending['status'] == 'waiting_confirm':
+            print(f"DEBUG waiting_confirm: tl={tl[:50]}")
             if tl in ('да', 'yes', 'ok', 'ок', '+', 'давай', 'вноси', '✅'):
                 do_confirm(pending)
             elif tl in ('нет', 'no', '-', 'пропустить', 'пропусти', '❌', 'skip'):
