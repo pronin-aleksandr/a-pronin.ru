@@ -717,96 +717,6 @@ def pending_clear():
 
 
 # ── Единый флоу предложения ──────────────────────────────────
-
-def _send_proposal(pending):
-    """Отправляет карточку предложения с кнопками ДА/НЕТ.
-    Используется как при первом показе, так и после правок/смены даты.
-    Не меняет pending — только отображает."""
-    analysis   = pending.get('analysis', {})
-    source     = pending.get('source', '')
-    link       = pending.get('link', '')
-    date       = pending.get('date', '')
-    placements = analysis.get('placements', [])
-
-    places = '\n'.join(f"• {PLACEMENT_LABELS.get(p,p)}" for p in placements)
-
-    analyzed  = load_json(ANALYZED_FILE, [])
-    q_len     = queue_len() + len(analyzed)
-    queue_note = f"\n\n📋 <i>Ещё в очереди: {q_len}</i>" if q_len > 0 else ""
-
-    title       = analysis.get('title', '')
-    description = analysis.get('description', '')
-    preview = ''
-    if title or description:
-        preview = f"\n\n📋 <b>Как будет выглядеть:</b>\n<b>{title}</b>"
-        if description:
-            preview += f"\n<i>{description}</i>"
-
-    date_line = f"📅 <b>Дата:</b> {date}\n" if date else ""
-
-    buttons = {'inline_keyboard': [[
-        {'text': '✅ ДА', 'callback_data': 'confirm_yes'},
-        {'text': '❌ НЕТ', 'callback_data': 'confirm_no'},
-    ]]}
-
-    tg(
-        f"🤖 <b>Клод предлагает</b>\n\n"
-        f"📌 <b>Источник:</b> {source}\n"
-        + (f"🔗 <b>Ссылка:</b> {link}\n" if link else "")
-        + date_line
-        + f"\n💡 <b>Предложение:</b>\n{analysis.get('suggestion','')}\n\n"
-        f"<b>Разместить в:</b>\n{places}"
-        + preview
-        + queue_note,
-        reply_markup=buttons
-    )
-    print(f"_send_proposal: source={source[:50]} placements={placements}")
-
-
-def propose(item):
-    """Единая точка входа для показа предложения пользователю.
-    Принимает item из любой очереди (manual_queue или analyzed).
-    Если у item нет analysis — запускает analyze() сам."""
-
-    text   = item.get('text', '')
-    link   = item.get('link', '')
-    source = item.get('source', '')
-
-    # Если анализ уже есть (из analyzed.json) — используем его
-    if item.get('placements') or item.get('suggestion'):
-        analysis = item
-    else:
-        tg(f"🔍 <b>Анализирую...</b>\n<i>{text[:150]}</i>")
-        analysis = analyze(text, link, source)
-
-        if not analysis:
-            tg("❌ Ошибка анализа. Пропускаю.")
-            return
-
-        if analysis.get('found_on_site'):
-            tg(f"ℹ️ <b>Уже есть на сайте</b>\n{analysis.get('reason','')}")
-            next_item = queue_pop()
-            if next_item:
-                propose(next_item)
-            return
-
-        if not analysis.get('placements'):
-            tg(f"ℹ️ Клод: размещать не нужно\n{analysis.get('reason','')}")
-            next_item = queue_pop()
-            if next_item:
-                propose(next_item)
-            return
-
-    _, prev_sha = gh_read(INDEX_FILE)
-    date = item.get('date', datetime.now().strftime('%d %b %Y'))
-
-    pending_save(text, link, date, source, analysis, prev_sha)
-    pending = pending_load()
-    _send_proposal(pending)
-
-
-# ── Подтверждение и запись ───────────────────────────────────
-
 def do_confirm(pending, user_comment=''):
     if user_comment and not pending.get('date_confirmed'):
         tg("✏️ <b>Переделываю через AI...</b>")
@@ -928,34 +838,387 @@ def do_confirm(pending, user_comment=''):
         tg("❌ Ошибка при записи в GitHub.")
 
 
+
+# ── Диалоговая история ───────────────────────────────────────
+
+DIALOG_FILE = 'data/dialog.json'
+DIALOG_MAX  = 6
+
+
+def dialog_add(role, text):
+    history = load_json(DIALOG_FILE, [])
+    history.append({'role': role, 'text': text[:500], 'ts': datetime.now().isoformat()})
+    if len(history) > 20:
+        history = history[-20:]
+    save_json(DIALOG_FILE, history)
+
+def dialog_clear():
+    save_json(DIALOG_FILE, [])
+
+def dialog_recent():
+    history = load_json(DIALOG_FILE, [])
+    recent  = history[-DIALOG_MAX:]
+    lines   = []
+    for m in recent:
+        prefix = 'Пользователь' if m['role'] == 'user' else 'Бот'
+        lines.append(f"{prefix}: {m['text']}")
+    return '\n'.join(lines)
+
+
+# ── Контекст сайта для Gemini ────────────────────────────────
+
+def build_site_context():
+    """Читает news.json и events.json, возвращает компактный текст с ID."""
+    news_raw,   _ = gh_read(NEWS_FILE)
+    events_raw, _ = gh_read(EVENTS_FILE)
+    lines = ["=== ТЕКУЩИЙ КОНТЕНТ САЙТА ==="]
+
+    if news_raw:
+        try:
+            news = json.loads(news_raw)
+            for section, items in news.items():
+                label = 'Консалтинг' if section == 'consulting' else 'Дроны'
+                lines.append(f"\n[Новости / {label}]")
+                for item in items[:15]:
+                    lines.append(
+                        f"  id={item.get('id')} | {item.get('date','')} | "
+                        f"{item.get('title','')} | {item.get('text','')[:80]}"
+                    )
+        except: pass
+
+    if events_raw:
+        try:
+            events = json.loads(events_raw)
+            for section, types in events.items():
+                label = 'Консалтинг' if section == 'consulting' else 'Дроны'
+                for etype, items in types.items():
+                    etype_label = 'предстоящие' if etype == 'upcoming' else 'прошедшие'
+                    lines.append(f"\n[Мероприятия / {label} / {etype_label}]")
+                    for item in items[:15]:
+                        lines.append(
+                            f"  id={item.get('id')} | "
+                            f"{item.get('day','')} {item.get('month','')} {item.get('year','')} | "
+                            f"{item.get('title','')} | {item.get('text','')[:80]}"
+                        )
+        except: pass
+
+    return '\n'.join(lines)
+
+
+# ── Gemini dialog ────────────────────────────────────────────
+
+GEMINI_SYSTEM = """Ты — умный редактор сайта Александра Пронина (a-pronin.ru).
+Сайт состоит из четырёх разделов:
+  news-consulting    — Новости / Консалтинг
+  news-drone         — Новости / Дроны
+  events-consulting  — Мероприятия / Консалтинг (поля: day, month, year, type=upcoming|past)
+  events-drone       — Мероприятия / Дроны (поля: day, month, year, type=upcoming|past)
+
+Ты получаешь:
+1. Текущий контент сайта (с ID каждой записи)
+2. Историю диалога
+3. Сообщение пользователя (текст, расшифровка голоса, или пересланный материал)
+4. Содержимое ссылки (если пользователь прислал URL)
+
+Твоя задача — понять намерение и вернуть JSON.
+
+ПРАВИЛА:
+- ДОБАВИТЬ материал → сформируй карточку из содержимого ссылки/текста, сам предложи раздел и дату
+- ИЗМЕНИТЬ запись → найди по id, покажи что изменится
+- УДАЛИТЬ → найди по id, покажи что удалишь
+- ПЕРЕНЕСТИ мероприятие → найди по id, покажи перенос
+- ВОПРОС → ответь текстом, action=null
+- НЕ ПОНЯЛ → уточни, action=null
+- Профиль не трогай — только news и events
+- Пиши reply по-русски, живо и кратко — как будто объясняешь коллеге
+
+Формат reply когда предлагаешь карточку:
+"Предлагаю добавить в [раздел]:
+
+📌 [Заголовок]
+[Описание 1-2 предложения]
+📅 [дата]
+🔗 [ссылка если есть]"
+
+Отвечай СТРОГО в JSON без markdown:
+{
+  "reply": "текст ответа",
+  "show_confirm": true или false,
+  "action": null | {
+    "type": "add_news" | "add_event" | "edit" | "delete" | "move_event",
+    "section": "consulting" | "drone",
+    "id": null | <число>,
+    "data": { ...поля... }
+  }
+}
+
+Для add_news data: title, text, date, link, source
+Для add_event data: title, text, day, month, year, type, link, link_text
+Для edit data: id + только изменяемые поля
+Для delete data: id
+Для move_event data: id, new_type ("upcoming" или "past")
+
+show_confirm=true когда есть action (нужно подтверждение).
+show_confirm=false когда просто отвечаем на вопрос."""
+
+
+def gemini_dialog(user_text, url_content=''):
+    """Основной диалоговый вызов Gemini. Возвращает dict или None."""
+    site_context = build_site_context()
+    dialog_hist  = dialog_recent()
+
+    url_section = f"\n\nСОДЕРЖИМОЕ ССЫЛКИ:\n{url_content[:2000]}" if url_content else ''
+
+    prompt = f"""{GEMINI_SYSTEM}
+
+{site_context}
+
+ИСТОРИЯ ДИАЛОГА:
+{dialog_hist if dialog_hist else '(нет)'}
+
+СООБЩЕНИЕ ПОЛЬЗОВАТЕЛЯ:
+{user_text}{url_section}"""
+
+    resp = claude(prompt, max_tokens=800)
+    if not resp:
+        return None
+    return parse_json(resp)
+
+
+# ── Единая карточка предложения ──────────────────────────────
+
+def show_proposal(reply, action):
+    """Показывает карточку с кнопками ДА/НЕТ."""
+    buttons = {'inline_keyboard': [[
+        {'text': '✅ ДА', 'callback_data': 'confirm_yes'},
+        {'text': '❌ НЕТ', 'callback_data': 'confirm_no'},
+    ]]}
+    tg(reply, reply_markup=buttons)
+
+
+def show_done(site_link, queue_note=''):
+    """Показывает сообщение об успехе с кнопкой отката."""
+    rollback_btn = {'inline_keyboard': [[
+        {'text': '↩️ Откатить', 'callback_data': 'confirm_rollback'}
+    ]]}
+    tg(
+        f"✅ <b>Готово! Сайт обновлён.</b>\n\n🔗 {site_link}{queue_note}",
+        reply_markup=rollback_btn
+    )
+
+
+# ── Выполнение действия ──────────────────────────────────────
+
+def execute_action(action):
+    """Выполняет действие из ответа Gemini. Возвращает (ok, site_link)."""
+    atype   = action.get('type')
+    section = action.get('section', '')
+    data    = action.get('data', {})
+
+    headers = {'Authorization': f'token {GITHUB_TOKEN}',
+               'Accept': 'application/vnd.github.v3+json'}
+
+    def read_json_file(filepath):
+        r = requests.get(
+            f'https://api.github.com/repos/{GITHUB_REPO}/contents/{filepath}',
+            headers=headers, timeout=15)
+        if r.status_code != 200:
+            return None, None
+        sha = r.json().get('sha')
+        obj = json.loads(base64.b64decode(
+            r.json()['content'].replace('\n','').replace(' ','')).decode('utf-8'))
+        return obj, sha
+
+    def write_json_file(filepath, obj, msg, sha):
+        return gh_write(filepath, json.dumps(obj, ensure_ascii=False, indent=2), msg, sha=sha)
+
+    ANCHORS = {
+        'news-consulting': '#news-consulting', 'news-drone': '#news-drone',
+        'events-consulting': '#events-consulting', 'events-drone': '#events-drone',
+    }
+
+    if atype == 'add_news':
+        news, sha = read_json_file(NEWS_FILE)
+        if news is None: return False, ''
+        if section not in news: news[section] = []
+        link = data.get('link', '')
+        if link and any(e.get('link') == link for e in news[section]):
+            return True, SITE_URL + ANCHORS.get(f'news-{section}', '')
+        news[section].insert(0, {
+            'id':      int(datetime.now().timestamp()),
+            'section': section,
+            'source':  data.get('source', ''),
+            'date':    data.get('date', datetime.now().strftime('%d %b %Y')),
+            'title':   data.get('title', ''),
+            'text':    data.get('text', ''),
+            'link':    link
+        })
+        ok = write_json_file(NEWS_FILE, news, f"Новость: {data.get('title','')[:50]}", sha)
+        return ok, SITE_URL + ANCHORS.get(f'news-{section}', '')
+
+    elif atype == 'add_event':
+        events, sha = read_json_file(EVENTS_FILE)
+        if events is None: return False, ''
+        if section not in events: events[section] = {'upcoming': [], 'past': []}
+        etype = data.get('type', 'upcoming')
+        link  = data.get('link', '')
+        events[section][etype].insert(0, {
+            'id':        int(datetime.now().timestamp()),
+            'section':   section,
+            'type':      etype,
+            'day':       data.get('day', ''),
+            'month':     data.get('month', ''),
+            'year':      data.get('year', str(datetime.now().year)),
+            'title':     data.get('title', ''),
+            'text':      data.get('text', ''),
+            'link':      link,
+            'link_text': data.get('link_text', 'Подробнее')
+        })
+        ok = write_json_file(EVENTS_FILE, events, f"Мероприятие: {data.get('title','')[:50]}", sha)
+        return ok, SITE_URL + ANCHORS.get(f'events-{section}', '')
+
+    elif atype == 'edit':
+        item_id = str(action.get('id') or data.get('id', ''))
+        for filepath, anchor_pfx in [(NEWS_FILE, 'news'), (EVENTS_FILE, 'events')]:
+            obj, sha = read_json_file(filepath)
+            if obj is None: continue
+            found_sec = ''
+            for sec, val in obj.items():
+                items_flat = val if isinstance(val, list) else \
+                    [i for sub in val.values() for i in (sub if isinstance(sub, list) else [])]
+                for item in items_flat:
+                    if str(item.get('id')) == item_id:
+                        for k, v in data.items():
+                            if k != 'id': item[k] = v
+                        found_sec = sec
+                        break
+                if found_sec: break
+            if found_sec:
+                ok = write_json_file(filepath, obj, f"Правка id={item_id}", sha)
+                return ok, SITE_URL + ANCHORS.get(f'{anchor_pfx}-{found_sec}', '')
+        return False, ''
+
+    elif atype == 'delete':
+        item_id = str(action.get('id') or data.get('id', ''))
+        for filepath in [NEWS_FILE, EVENTS_FILE]:
+            obj, sha = read_json_file(filepath)
+            if obj is None: continue
+            found = False
+            for sec, val in obj.items():
+                if isinstance(val, list):
+                    before = len(val); obj[sec] = [x for x in val if str(x.get('id')) != item_id]
+                    if len(obj[sec]) < before: found = True; break
+                elif isinstance(val, dict):
+                    for etype, items in val.items():
+                        before = len(items); val[etype] = [x for x in items if str(x.get('id')) != item_id]
+                        if len(val[etype]) < before: found = True; break
+                if found: break
+            if found:
+                ok = write_json_file(filepath, obj, f"Удаление id={item_id}", sha)
+                return ok, SITE_URL
+
+    elif atype == 'move_event':
+        item_id  = str(action.get('id') or data.get('id', ''))
+        new_type = data.get('new_type', 'past')
+        events, sha = read_json_file(EVENTS_FILE)
+        if events is None: return False, ''
+        found_sec = ''
+        for sec, types in events.items():
+            for etype, items in types.items():
+                for item in items:
+                    if str(item.get('id')) == item_id:
+                        types[etype] = [x for x in items if str(x.get('id')) != item_id]
+                        item['type'] = new_type
+                        types.setdefault(new_type, []).insert(0, item)
+                        found_sec = sec; break
+                if found_sec: break
+            if found_sec: break
+        if found_sec:
+            ok = write_json_file(EVENTS_FILE, events, f"Перенос id={item_id} → {new_type}", sha)
+            return ok, SITE_URL + ANCHORS.get(f'events-{found_sec}', '')
+
+    return False, ''
+
+
+# ── do_rollback (универсальный) ──────────────────────────────
+
 def do_rollback(pending):
-    """Откатывает последнее добавление — удаляет первый элемент из нужного JSON."""
+    """Откат: поддерживает и старый pending (analysis.placements) и новый (action)."""
     tg("🔄 <b>Откатываю...</b>")
-    placements = pending.get('analysis', {}).get('placements', [])
     success = True
 
-    for placement in placements:
-        if placement.startswith('news-'):
-            section = placement.replace('news-', '')
-            news_raw, sha = gh_read(NEWS_FILE)
-            if news_raw:
-                news = json.loads(news_raw)
+    # Новый флоу — action от Gemini
+    action = pending.get('action')
+    if action:
+        atype   = action.get('type', '')
+        section = action.get('section', '')
+        item_id = str(action.get('id') or action.get('data', {}).get('id', ''))
+
+        headers = {'Authorization': f'token {GITHUB_TOKEN}',
+                   'Accept': 'application/vnd.github.v3+json'}
+
+        if atype in ('add_news',):
+            r = requests.get(f'https://api.github.com/repos/{GITHUB_REPO}/contents/{NEWS_FILE}',
+                             headers=headers, timeout=15)
+            if r.status_code == 200:
+                sha  = r.json().get('sha')
+                news = json.loads(base64.b64decode(
+                    r.json()['content'].replace('\n','').replace(' ','')).decode('utf-8'))
                 if news.get(section):
-                    news[section].pop(0)  # Удаляем первый (последний добавленный)
+                    news[section].pop(0)
                     ok = gh_write(NEWS_FILE, json.dumps(news, ensure_ascii=False, indent=2),
-                                 'Rollback: отмена новости', sha=sha)
+                                 'Rollback новости', sha=sha)
                     if not ok: success = False
 
-        elif placement.startswith('events-'):
-            section = placement.replace('events-', '')
-            events_raw, sha = gh_read(EVENTS_FILE)
-            if events_raw:
-                events = json.loads(events_raw)
-                if events.get(section, {}).get('upcoming'):
-                    events[section]['upcoming'].pop(0)
+        elif atype in ('add_event',):
+            r = requests.get(f'https://api.github.com/repos/{GITHUB_REPO}/contents/{EVENTS_FILE}',
+                             headers=headers, timeout=15)
+            if r.status_code == 200:
+                sha    = r.json().get('sha')
+                events = json.loads(base64.b64decode(
+                    r.json()['content'].replace('\n','').replace(' ','')).decode('utf-8'))
+                etype = action.get('data', {}).get('type', 'upcoming')
+                if events.get(section, {}).get(etype):
+                    events[section][etype].pop(0)
                     ok = gh_write(EVENTS_FILE, json.dumps(events, ensure_ascii=False, indent=2),
-                                 'Rollback: отмена мероприятия', sha=sha)
+                                 'Rollback мероприятия', sha=sha)
                     if not ok: success = False
+
+        elif atype == 'edit' and item_id:
+            # При правке откат невозможен без снапшота — сообщаем
+            tg("⚠️ Откат правки не поддерживается. Отредактируй вручную.")
+            pending_clear()
+            return
+
+        elif atype == 'delete' and item_id:
+            tg("⚠️ Откат удаления не поддерживается.")
+            pending_clear()
+            return
+
+    else:
+        # Старый флоу — placements
+        placements = pending.get('analysis', {}).get('placements', [])
+        for placement in placements:
+            if placement.startswith('news-'):
+                section  = placement.replace('news-', '')
+                raw, sha = gh_read(NEWS_FILE)
+                if raw:
+                    news = json.loads(raw)
+                    if news.get(section):
+                        news[section].pop(0)
+                        ok = gh_write(NEWS_FILE, json.dumps(news, ensure_ascii=False, indent=2),
+                                     'Rollback новости', sha=sha)
+                        if not ok: success = False
+            elif placement.startswith('events-'):
+                section  = placement.replace('events-', '')
+                raw, sha = gh_read(EVENTS_FILE)
+                if raw:
+                    events = json.loads(raw)
+                    if events.get(section, {}).get('upcoming'):
+                        events[section]['upcoming'].pop(0)
+                        ok = gh_write(EVENTS_FILE, json.dumps(events, ensure_ascii=False, indent=2),
+                                     'Rollback мероприятия', sha=sha)
+                        if not ok: success = False
 
     if success:
         pending_clear()
@@ -964,20 +1227,79 @@ def do_rollback(pending):
         tg("❌ Ошибка отката.")
 
 
-# ── Обработка команд и сообщений ────────────────────────────
+# ── propose — теперь через gemini_dialog ────────────────────
+
+def propose(item):
+    """Единая точка входа для показа предложения.
+    Используется и мониторингом, и ручным вводом."""
+    text   = item.get('text', '')
+    link   = item.get('link', '')
+    source = item.get('source', '')
+
+    tg("🔍 <b>Анализирую...</b>")
+
+    url_content = ''
+    if link:
+        url_content = fetch_url_content(link) or ''
+
+    # Формируем сообщение для Gemini как будто пользователь прислал материал
+    user_msg = f"Материал из мониторинга.\nИсточник: {source}\nТекст: {text[:500]}"
+    if link:
+        user_msg += f"\nСсылка: {link}"
+
+    result = gemini_dialog(user_msg, url_content=url_content)
+
+    if not result:
+        tg("❌ Ошибка анализа. Пропускаю.")
+        # Берём следующий из очереди
+        analyzed = load_json(ANALYZED_FILE, [])
+        if analyzed:
+            next_item = analyzed.pop(0)
+            save_json(ANALYZED_FILE, analyzed)
+            propose(next_item)
+        return
+
+    reply  = result.get('reply', '')
+    action = result.get('action')
+
+    if not action:
+        tg(f"ℹ️ {reply}")
+        analyzed = load_json(ANALYZED_FILE, [])
+        if analyzed:
+            next_item = analyzed.pop(0)
+            save_json(ANALYZED_FILE, analyzed)
+            propose(next_item)
+        return
+
+    # Сохраняем pending и показываем карточку
+    save_json(PENDING_FILE, {
+        'status':    'dialog_confirm',
+        'reply':     reply,
+        'action':    action,
+        'user_text': user_msg,
+        'created':   datetime.now().isoformat()
+    })
+    dialog_add('bot', reply)
+
+    analyzed = load_json(ANALYZED_FILE, [])
+    q_len    = queue_len() + len(analyzed)
+    queue_note = f"\n\n📋 <i>Ещё в очереди: {q_len}</i>" if q_len > 0 else ""
+
+    show_proposal(reply + queue_note, action)
+
+
+# ── Новый process_commands ───────────────────────────────────
 
 def process_commands():
     last_id = get_last_uid()
     updates = get_updates(offset=(last_id + 1) if last_id else None)
 
     for upd in updates:
-        uid  = upd['update_id']
+        uid = upd['update_id']
         save_last_uid(uid)
-
-        # Перечитываем pending в начале каждой итерации
         pending = pending_load()
 
-        # Обработка нажатий на inline-кнопки
+        # ── Inline-кнопки ──
         cb = upd.get('callback_query')
         if cb:
             cb_cid = str(cb.get('from', {}).get('id', ''))
@@ -985,70 +1307,75 @@ def process_commands():
                 tg_answer_callback(cb['id'])
                 cb_data = cb.get('data', '')
                 pending = pending_load()
-                if cb_data.startswith('date_confirm_') and pending and pending.get('status') == 'waiting_date':
+
+                if cb_data == 'confirm_yes' and pending and pending.get('status') == 'dialog_confirm':
+                    action = pending.get('action')
+                    if action:
+                        tg("⚙️ <b>Вношу изменения...</b>")
+                        ok, site_link = execute_action(action)
+                        if ok:
+                            pending['status'] = 'done'
+                            save_json(PENDING_FILE, pending)
+                            analyzed = load_json(ANALYZED_FILE, [])
+                            q_len    = queue_len() + len(analyzed)
+                            queue_note = f"\n\n📋 <i>Ещё в очереди: {q_len}</i>" if q_len > 0 else ""
+                            show_done(site_link, queue_note)
+                            dialog_add('bot', f"Выполнено: {action.get('type')} → {site_link}")
+                        else:
+                            tg("❌ Ошибка при записи в GitHub.")
+                    else:
+                        pending_clear()
+
+                elif cb_data == 'confirm_no' and pending and pending.get('status') == 'dialog_confirm':
+                    pending_clear()
+                    tg("⏭ Отменено. Напиши что хочешь изменить.")
+                    dialog_add('bot', 'Действие отменено.')
+
+                elif cb_data == 'confirm_rollback' and pending and pending.get('status') == 'done':
+                    do_rollback(pending)
+                    dialog_add('bot', 'Выполнен откат.')
+
+                elif cb_data == 'confirm_yes' and pending and pending.get('status') == 'waiting_confirm':
+                    tg("✅ ДА"); do_confirm(pending)
+                elif cb_data == 'confirm_no' and pending and pending.get('status') == 'waiting_confirm':
+                    tg("❌ НЕТ"); pending_clear(); tg("⏭ Пропущено.")
+                    manual_item = manual_queue_pop()
+                    if manual_item: propose(manual_item)
+                    else:
+                        analyzed = load_json(ANALYZED_FILE, [])
+                        if analyzed:
+                            first = analyzed.pop(0); save_json(ANALYZED_FILE, analyzed); propose(first)
+                elif cb_data.startswith('date_confirm_') and pending and pending.get('status') == 'waiting_date':
                     confirmed_date = cb_data.replace('date_confirm_', '')
-                    pending['date'] = confirmed_date
-                    pending['date_confirmed'] = True
-                    pending['status'] = 'waiting_confirm'
-                    save_json(PENDING_FILE, pending)
+                    pending['date'] = confirmed_date; pending['date_confirmed'] = True
+                    pending['status'] = 'waiting_confirm'; save_json(PENDING_FILE, pending)
                     do_confirm(pending)
                 elif cb_data == 'date_manual' and pending and pending.get('status') == 'waiting_date':
-                    tg("✏️ Введи дату вручную в формате: <b>31 мая 2026</b>")
-                elif cb_data == 'confirm_yes' and pending and pending['status'] == 'waiting_confirm':
-                    tg("✅ ДА")
-                    do_confirm(pending)
-                elif cb_data == 'confirm_no' and pending and pending['status'] == 'waiting_confirm':
-                    tg("❌ НЕТ")
-                    pending_clear()
-                    tg("⏭ Пропущено.")
-                    # Сначала приоритетная очередь
-                    manual_item = manual_queue_pop()
-                    if manual_item:
-                        propose(manual_item)
-                    else:
-                        analyzed = load_json(ANALYZED_FILE, [])
-                        if analyzed:
-                            first = analyzed.pop(0)
-                            save_json(ANALYZED_FILE, analyzed)
-                            propose(first)
-                elif cb_data == 'confirm_done' and pending and pending['status'] == 'done':
-                    pending_clear()
-                    tg("👍 Принято.")
-                    manual_item = manual_queue_pop()
-                    if manual_item:
-                        propose(manual_item)
-                    else:
-                        analyzed = load_json(ANALYZED_FILE, [])
-                        if analyzed:
-                            first = analyzed.pop(0)
-                            save_json(ANALYZED_FILE, analyzed)
-                            propose(first)
-                elif cb_data == 'confirm_rollback' and pending and pending['status'] == 'done':
-                    do_rollback(pending)
+                    tg("✏️ Введи дату вручную: <b>31 мая 2026</b>")
+                elif cb_data == 'confirm_done' and pending and pending.get('status') == 'done':
+                    pending_clear(); tg("👍 Принято.")
             continue
 
-        msg     = upd.get('message', {})
-        cid     = str(msg.get('chat', {}).get('id', ''))
+        msg = upd.get('message', {})
+        cid = str(msg.get('chat', {}).get('id', ''))
         if cid != str(CHAT_ID):
             continue
 
-        # Определяем текст: обычное, голосовое или пересланное сообщение
-        text = msg.get('text', '').strip()
-        voice = msg.get('voice')
+        # ── Определяем текст ──
+        text    = msg.get('text', '').strip()
+        voice   = msg.get('voice')
         forward = msg.get('forward_origin') or msg.get('forward_from') or msg.get('forward_from_chat')
 
         if voice and not text:
-            tg("🎤 <b>Получил голосовое, распознаю...</b>")
+            tg("🎤 <b>Распознаю...</b>")
             text = transcribe_voice(voice['file_id'])
             if not text:
-                tg("❌ Не удалось распознать голос. Попробуй написать текстом.")
+                tg("❌ Не удалось распознать. Напиши текстом.")
                 continue
-            tg(f"📝 <b>Распознано:</b> <i>{text}</i>")
+            tg(f"📝 <i>{text}</i>")
 
-        # Пересланное сообщение — берём текст из него
         if forward and not text:
-            text = msg.get('text', '') or msg.get('caption', '')
-            text = text.strip() if text else ''
+            text = (msg.get('text', '') or msg.get('caption', '')).strip()
 
         if not text:
             continue
@@ -1057,223 +1384,106 @@ def process_commands():
         tl      = text.lower().strip()
         pending = pending_load()
 
-        # ── Ответ на ожидание даты (ручной ввод текстом или голосом) ──
-        if pending and pending.get('status') == 'waiting_date':
-            raw_date = text.strip()
-            norm_prompt = (
-                f'Преобразуй дату "{raw_date}" в формат "ДД месяц ГГГГ" на русском языке, '
-                f'например "31 мая 2026". Ответь только датой, без пояснений.'
-            )
-            normalized = claude(norm_prompt, max_tokens=30)
-            confirmed_date = normalized.strip() if normalized else raw_date
-            pending['date'] = confirmed_date
-            pending['date_confirmed'] = True
-            pending['status'] = 'waiting_confirm'
-            save_json(PENDING_FILE, pending)
-            user_comment = pending.get('user_comment', '')
-            do_confirm(pending, user_comment=user_comment)
-            continue
-
-        # ── Ответы на ожидающее подтверждение ──
-        if pending and pending['status'] == 'waiting_confirm':
-            print(f"DEBUG waiting_confirm: tl={tl[:50]}")
-            if tl in ('да', 'yes', 'ok', 'ок', '+', 'давай', 'вноси', '✅'):
-                do_confirm(pending)
-            elif tl in ('нет', 'no', '-', 'пропустить', 'пропусти', '❌', 'skip'):
-                pending_clear()
-                tg("⏭ Пропущено.")
-                # Берём следующий из очереди
-                next_item = queue_pop()
-                if next_item:
-                    propose(next_item)
-            elif tl in ('откат', 'rollback', 'отмена'):
-                tg("⚠️ Изменения ещё не применялись — нечего откатывать.")
-            else:
-                # Уточнение от пользователя (текст или голос)
-                do_confirm(pending, user_comment=text)
-            continue
-
-        # ── Откат после успешного применения ──
-        if pending and pending['status'] == 'done':
-            if tl in ('откат', 'rollback', 'отмена', 'отменить'):
-                do_rollback(pending)
-                continue
-            else:
-                pending_clear()
-                tg("✅ Принято.")
-                # Берём следующий из очереди
-                next_item = queue_pop()
-                if next_item:
-                    propose(next_item)
-
-        # ── Команды ──
-        if text.startswith('/help') or text.startswith('/start'):
+        # ── Служебные команды ──
+        if tl in ('/help', '/start'):
             tg(
-                '🤖 <b>Pronin Monitor + Claude AI</b>\n\n'
-                '🔍 Бот мониторит сайты и ВКонтакте.\n'
-                'Клод анализирует каждый материал и предлагает размещение.\n\n'
-                '<b>Ручной режим:</b>\n'
-                'Отправь текст или 🎤 <b>голосовое</b> → Клод проверит и предложит.\n\n'
-                '<b>Ответы на предложения:</b>\n'
-                '✅ ДА — внести изменения\n'
-                '❌ НЕТ — пропустить, взять следующее\n'
-                '🔄 ОТКАТ — отменить последнее изменение\n'
-                '✏️🎤 <i>текст/голос</i> — уточнить куда/как разместить\n\n'
-                '/status — очередь и текущее состояние\n'
-                '/help — эта справка'
+                '🤖 <b>Редактор сайта a-pronin.ru</b>\n\n'
+                'Пиши или надиктовывай что угодно:\n'
+                '• Пришли ссылку — предложу карточку\n'
+                '• "Перенеси Елагин в прошедшие"\n'
+                '• "Измени описание новости про BITOBE"\n'
+                '• "Что сейчас в новостях дронов?"\n'
+                '• "Удали последнее мероприятие консалтинга"\n\n'
+                '/status — текущее состояние\n'
+                '/clear — сбросить историю диалога'
             )
+            continue
 
-        elif (tl.startswith('отредактируй') or tl.startswith('измени описание') or tl.startswith('редактируй')) and not pending:
-            lines_edit = text.strip().split('\n')
-            first_line = lines_edit[0]
-            # Новое описание — всё после первой строки, объединённое
-            new_desc = '\n'.join(l.strip() for l in lines_edit[1:] if l.strip())
-            title_match = re.search(r'"([^"]+)"', first_line)
-            if title_match:
-                search_title = title_match.group(1)
-            else:
-                # Убираем служебные слова из начала команды
-                clean_cmd = re.sub(r'^(отредактируй|измени|редактируй)\s+(описание\s+)?(новости?\s+|мероприятия?\s+)?', '', first_line, flags=re.IGNORECASE).strip()
-                search_title = clean_cmd
-            if not new_desc:
-                tg(f'✏️ Найду новость: <b>{search_title}</b>\n\nНапиши новое описание следующим сообщением.')
-                save_json('data/edit_pending.json', {'title': search_title, 'waiting_desc': True})
-                continue
-            # Если описание начинается с инструкции — просим Gemini написать текст
-            import base64 as _b64
-            _headers = {'Authorization': f'token {GITHUB_TOKEN}', 'Accept': 'application/vnd.github.v3+json'}
-            _r = requests.get(f'https://api.github.com/repos/{GITHUB_REPO}/contents/{NEWS_FILE}', headers=_headers, timeout=15)
-            news = {}
-            sha = None
-            if _r.status_code == 200:
-                sha = _r.json().get('sha')
-                _news_raw = _b64.b64decode(_r.json()['content'].replace('\n','').replace(' ','')).decode('utf-8')
-                news = json.loads(_news_raw)
-
-            instruction_markers = ['должно говориться', 'должно быть', 'напиши', 'сделай так', 'укажи', 'добавь что', 'упомяни', 'должно', 'это важно', 'статья', 'источник']
-            if any(m in new_desc.lower() for m in instruction_markers) or not any(c in new_desc for c in '.!?'):
-                tg("⚙️ Генерирую описание через AI...")
-                # Ищем ссылку у этой новости и читаем содержимое
-                article_text = ''
-                for sec in news:
-                    for ie in news[sec]:
-                        if search_title.lower() in ie.get('title','').lower():
-                            article_link = ie.get('link','')
-                            if article_link:
-                                article_content = fetch_url_content(article_link)
-                                if article_content:
-                                    article_text = article_content[:3000]
-                            break
-                    if article_text:
-                        break
-                if article_text:
-                    gemini_desc_prompt = f'Напиши краткое описание новости (2-3 предложения) для сайта.\n\nЗаголовок: {search_title}\n\nСодержимое статьи:\n{article_text}\n\nИнструкция: {new_desc}\n\nОтветь только готовым текстом описания, без кавычек и пояснений.'
-                else:
-                    gemini_desc_prompt = f'Напиши краткое описание новости (2-3 предложения) для сайта на основе инструкции:\n{new_desc}\n\nЗаголовок новости: {search_title}\n\nОтветь только готовым текстом описания, без кавычек и пояснений.'
-                generated = claude(gemini_desc_prompt, max_tokens=300)
-                if generated:
-                    new_desc = generated.strip()
-            import base64 as _b64
-            headers = {'Authorization': f'token {GITHUB_TOKEN}', 'Accept': 'application/vnd.github.v3+json'}
-            r = requests.get(f'https://api.github.com/repos/{GITHUB_REPO}/contents/{NEWS_FILE}', headers=headers, timeout=15)
-            if r.status_code == 200:
-                sha = r.json().get('sha')
-                news_raw = _b64.b64decode(r.json()['content'].replace('\n','').replace(' ','')).decode('utf-8')
-                news = json.loads(news_raw)
-                found_edit = False
-            tg("⚙️ Редактирую...")
-            if sha and news:
-                found_edit = False
-                for section in news:
-                    for item_edit in news[section]:
-                        if search_title.lower() in item_edit.get('title','').lower():
-                            item_edit['text'] = new_desc
-                            found_edit = True
-                            break
-                    if found_edit:
-                        break
-                if not found_edit:
-                    # Пробуем найти через Gemini
-                    all_titles = [i.get('title','') for s in news for i in news[s]]
-                    titles_str = '\n'.join(f'{i+1}. {t}' for i,t in enumerate(all_titles))
-                    gemini_prompt = f'Из списка заголовков найди наиболее похожий на: "{search_title}"\n\nСписок:\n{titles_str}\n\nОтветь только точным текстом заголовка из списка, ничего лишнего.'
-                    found_title = claude(gemini_prompt, max_tokens=200)
-                    if found_title:
-                        found_title = found_title.strip().strip('"«»')
-                        for section in news:
-                            for item_edit in news[section]:
-                                if found_title.lower() in item_edit.get('title','').lower() or item_edit.get('title','').lower() in found_title.lower():
-                                    item_edit['text'] = new_desc
-                                    found_edit = True
-                                    break
-                            if found_edit:
-                                break
-
-                if found_edit:
-                    ok = gh_write(NEWS_FILE, json.dumps(news, ensure_ascii=False, indent=2), f'Правка: {search_title[:50]}', sha=sha)
-                    if ok:
-                        # Определяем раздел для ссылки
-                        edit_anchor = ''
-                        for sec in news:
-                            for ie in news[sec]:
-                                if ie.get('text') == new_desc:
-                                    edit_anchor = '#news-consulting' if sec == 'consulting' else '#news-drone'
-                                    break
-                            if edit_anchor:
-                                break
-                        tg(f"✅ Описание обновлено.\n🔗 {SITE_URL}{edit_anchor}")
-                    else:
-                        tg("❌ Ошибка записи.")
-                else:
-                    tg(f"⚠️ Не нашёл новость: <b>{search_title}</b>")
-            else:
-                tg("❌ Не удалось прочитать news.json")
-
-        elif text.startswith('/status'):
-            p     = pending_load()
+        if tl == '/status':
+            p = pending_load()
+            lines = [f"⏳ Статус: {p.get('status')}" if p else "✅ Нет ожидающих действий"]
+            if p and p.get('action'):
+                lines.append(f"Действие: {p['action'].get('type')}")
             q_len = queue_len()
-            lines = []
-            if p:
-                status_label = 'ожидает подтверждения' if p['status'] == 'waiting_confirm' else 'применено (можно откатить)'
-                lines.append(f"⏳ <b>Текущее:</b> {status_label}\n{p.get('text','')[:150]}")
-            else:
-                lines.append("✅ Нет текущего действия")
-            if q_len:
-                lines.append(f"📋 В очереди: {q_len} материалов")
-            tg('\n\n'.join(lines))
+            if q_len: lines.append(f"📋 В очереди: {q_len}")
+            tg('\n'.join(lines))
+            continue
 
-        else:
-            # Свободный текст / голос → новый материал
-            urls  = re.findall(r'https?://\S+', text)
-            link  = urls[0] if urls else ''
-            clean = text.replace(link, '').strip() if link else text
+        if tl == '/clear':
+            dialog_clear()
+            tg("🗑 История диалога сброшена.")
+            continue
 
-            # Игнорируем короткие ответы — они обрабатываются выше как команды
-            IGNORED = {'да','нет','yes','no','ok','ок','откат','rollback',
-                       'принято','отмена','пропустить','skip','+','-','👍','✅','❌'}
-            if tl in IGNORED:
+        # ── Ввод даты (обратная совместимость) ──
+        if pending and pending.get('status') == 'waiting_date':
+            norm_prompt = f'Преобразуй дату "{text}" в формат "ДД месяц ГГГГ" на русском, например "31 мая 2026". Ответь только датой.'
+            normalized = claude(norm_prompt, max_tokens=30)
+            confirmed_date = normalized.strip() if normalized else text
+            pending['date'] = confirmed_date; pending['date_confirmed'] = True
+            pending['status'] = 'waiting_confirm'; save_json(PENDING_FILE, pending)
+            do_confirm(pending, user_comment=pending.get('user_comment', ''))
+            continue
+
+        # ── Всё остальное — в Gemini ──
+        dialog_add('user', text)
+
+        # Текстовое да/нет при ожидании подтверждения
+        if pending and pending.get('status') == 'dialog_confirm':
+            if tl in ('да', 'yes', 'ок', 'ok', '+', 'давай', 'вноси', '✅'):
+                action = pending.get('action')
+                if action:
+                    tg("⚙️ <b>Вношу изменения...</b>")
+                    ok, site_link = execute_action(action)
+                    if ok:
+                        pending['status'] = 'done'
+                        save_json(PENDING_FILE, pending)
+                        analyzed = load_json(ANALYZED_FILE, [])
+                        q_len    = queue_len() + len(analyzed)
+                        queue_note = f"\n\n📋 <i>Ещё в очереди: {q_len}</i>" if q_len > 0 else ""
+                        show_done(site_link, queue_note)
+                        dialog_add('bot', f"Выполнено: {action.get('type')} → {site_link}")
+                    else:
+                        tg("❌ Ошибка при записи в GitHub.")
                 continue
+            elif tl in ('нет', 'no', '-', 'отмена', 'пропустить', 'skip', '❌'):
+                pending_clear()
+                tg("⏭ Отменено.")
+                dialog_add('bot', 'Действие отменено.')
+                continue
+            # Иначе — уточнение, идём дальше в Gemini
 
-            if link:
-                # Убираем команды типа "сделай новость", "добавь" из текста
-                import re as _re
-                clean_text = _re.sub(
-                    r'^(добавь|сделай|размести|поставь|внеси|создай)[^,\.]*[,\.]?\s*',
-                    '', clean, flags=_re.IGNORECASE
-                ).strip()
-                if len(clean_text) < 5:
-                    clean_text = clean
-                manual_queue_add(clean_text, link)
-                if pending_load() is None:
-                    item = manual_queue_pop()
-                    if item:
-                        propose(item)
-                        break  # Прерываем цикл — ждём ответа пользователя
-                else:
-                    tg(f"📋 Твой материал в приоритете. Сначала ответь на текущее предложение — потом сразу перейдём к твоему.")
-            else:
-                tg("⚠️ Отправь ссылку на материал.")
+        # Читаем ссылку если есть
+        urls        = re.findall(r'https?://\S+', text)
+        url_content = ''
+        if urls:
+            tg("🔍 <b>Читаю ссылку...</b>")
+            url_content = fetch_url_content(urls[0]) or ''
 
+        tg("🤔 <b>Думаю...</b>")
+        result = gemini_dialog(text, url_content=url_content)
+
+        if not result:
+            tg("❌ Gemini не ответил. Попробуй ещё раз.")
+            continue
+
+        reply        = result.get('reply', '')
+        action       = result.get('action')
+        show_confirm = result.get('show_confirm', False)
+
+        dialog_add('bot', reply)
+
+        if action and show_confirm:
+            save_json(PENDING_FILE, {
+                'status':    'dialog_confirm',
+                'reply':     reply,
+                'action':    action,
+                'user_text': text,
+                'created':   datetime.now().isoformat()
+            })
+            show_proposal(reply, action)
+        else:
+            pending_clear()
+            tg(reply)
 
 # ── Мониторинг ──────────────────────────────────────────────
 
