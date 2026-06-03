@@ -1078,23 +1078,32 @@ def execute_action(action):
         return ok, SITE_URL + ANCHORS.get(f'events-{section}', '')
 
     elif atype == 'edit':
-        item_id = str(action.get('id') or data.get('id', ''))
+        # Gemini может вернуть data как dict (одна запись) или list (несколько записей)
+        edits = data if isinstance(data, list) else [data]
+
         for filepath, anchor_pfx in [(NEWS_FILE, 'news'), (EVENTS_FILE, 'events')]:
             obj, sha = read_json_file(filepath)
             if obj is None: continue
             found_sec = ''
-            for sec, val in obj.items():
-                items_flat = val if isinstance(val, list) else \
-                    [i for sub in val.values() for i in (sub if isinstance(sub, list) else [])]
-                for item in items_flat:
-                    if str(item.get('id')) == item_id:
-                        for k, v in data.items():
-                            if k != 'id': item[k] = v
-                        found_sec = sec
-                        break
-                if found_sec: break
-            if found_sec:
-                ok = write_json_file(filepath, obj, f"Правка id={item_id}", sha)
+            changed   = False
+
+            for edit_data in edits:
+                edit_id = str(action.get('id') or edit_data.get('id', ''))
+                if not edit_id:
+                    continue
+                for sec, val in obj.items():
+                    items_flat = val if isinstance(val, list) else \
+                        [i for sub in val.values() for i in (sub if isinstance(sub, list) else [])]
+                    for item in items_flat:
+                        if str(item.get('id')) == edit_id:
+                            for k, v in edit_data.items():
+                                if k != 'id': item[k] = v
+                            found_sec = sec
+                            changed   = True
+                            break
+
+            if changed:
+                ok = write_json_file(filepath, obj, f"Правка (batch)", sha)
                 return ok, SITE_URL + ANCHORS.get(f'{anchor_pfx}-{found_sec}', '')
         return False, ''
 
