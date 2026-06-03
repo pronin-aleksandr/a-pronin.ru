@@ -174,15 +174,6 @@
   ],
   "drone": [
     {
-      "id": 1780435693,
-      "section": "drone",
-      "source": "",
-      "date": "31 мая 2026",
-      "title": "«Елагин слет»: праздник модельно-технического спорта стартовал в Петербурге",
-      "text": "Репортаж телеканала «Санкт-Петербург» о проведении фестиваля модельно-технического спорта на Елагином острове.",
-      "link": "https://tvspb.ru/news/2026/05/31/elagin-slet-prazdnik-modelno-tehnicheskogo-sporta-startoval-v-peterburge"
-    },
-    {
       "id": 1780435101,
       "section": "drone",
       "source": "",
@@ -237,6 +228,15 @@
       "link": "https://www.spbstu.ru/media/news/sport/tekhnologii-i-skorost-v-politekhe-ustroili-gonki-dronov-polikap/"
     },
     {
+      "id": 4,
+      "section": "drone",
+      "source": "Life.ru",
+      "date": "14 июл 2025",
+      "title": "В Санкт-Петербурге провели гонки маленьких дронов",
+      "text": "Репортаж о соревнованиях вупов — контактных дронов с защищёнными пропеллерами — и развитии этого вида спорта в России.",
+      "link": "https://life.ru/p/1770289"
+    },
+    {
       "id": 3,
       "section": "drone",
       "source": "Телеканал Санкт-Петербург",
@@ -246,13 +246,13 @@
       "link": "https://tvspb.ru/news/2025/07/13/formula-1-xxi-veka-v-peterburge-prohodit-gonka-dronov"
     },
     {
-      "id": 4,
+      "id": 1780435693,
       "section": "drone",
-      "source": "Life.ru",
-      "date": "14 июл 2025",
-      "title": "В Санкт-Петербурге провели гонки маленьких дронов",
-      "text": "Репортаж о соревнованиях вупов — контактных дронов с защищёнными пропеллерами — и развитии этого вида спорта в России.",
-      "link": "https://life.ru/p/1770289"
+      "source": "",
+      "date": "31 мая 2026",
+      "title": "«Елагин слет»: праздник модельно-технического спорта стартовал в Петербурге",
+      "text": "Репортаж телеканала «Санкт-Петербург» о проведении фестиваля модельно-технического спорта на Елагином острове.",
+      "link": "https://tvspb.ru/news/2026/05/31/elagin-slet-prazdnik-modelno-tehnicheskogo-sporta-startoval-v-peterburge"
     }
   ]
 }
