@@ -183,6 +183,15 @@
       "link": "https://spbdnevnik.ru/news/2026-05-31/gonki-na-zemle-vode-i-v-nebe-prazdnik-elagin-slet-sobral-na-odnoy-ploshchadke-znakovye-sportivnye-avtomobili-i-aviamodeli"
     },
     {
+      "id": 1780435693,
+      "section": "drone",
+      "source": "",
+      "date": "31 мая 2026",
+      "title": "«Елагин слет»: праздник модельно-технического спорта стартовал в Петербурге",
+      "text": "Репортаж телеканала «Санкт-Петербург» о проведении фестиваля модельно-технического спорта на Елагином острове.",
+      "link": "https://tvspb.ru/news/2026/05/31/elagin-slet-prazdnik-modelno-tehnicheskogo-sporta-startoval-v-peterburge"
+    },
+    {
       "id": 1780126999,
       "section": "drone",
       "source": "Федерация гонок дронов России",
@@ -244,15 +253,6 @@
       "title": "«Формула-1» XXI века: в Петербурге проходит «Гонка Дронов»",
       "text": "Спортивный директор ФГД СПб Александр Пронин — о том, как гонки дронов завоёвывают аудиторию и привлекают тысячи зрителей.",
       "link": "https://tvspb.ru/news/2025/07/13/formula-1-xxi-veka-v-peterburge-prohodit-gonka-dronov"
-    },
-    {
-      "id": 1780435693,
-      "section": "drone",
-      "source": "",
-      "date": "31 мая 2026",
-      "title": "«Елагин слет»: праздник модельно-технического спорта стартовал в Петербурге",
-      "text": "Репортаж телеканала «Санкт-Петербург» о проведении фестиваля модельно-технического спорта на Елагином острове.",
-      "link": "https://tvspb.ru/news/2026/05/31/elagin-slet-prazdnik-modelno-tehnicheskogo-sporta-startoval-v-peterburge"
     }
   ]
 }
