@@ -958,6 +958,9 @@ GEMINI_SYSTEM = """Ты — умный редактор сайта Алекса�
 Для delete data: id
 Для move_event data: id, new_type ("upcoming" или "past")
 
+ФОРМАТ ДАТ — строго родительный падеж: "31 мая 2026", "2 июня 2026", "14 июля 2025".
+НИКОГДА не пиши: "май", "июн", "июл", "янв" и т.д. — только полное слово в родительном падеже.
+
 show_confirm=true когда есть action (нужно подтверждение).
 show_confirm=false когда просто отвечаем на вопрос."""
 
@@ -1199,14 +1202,8 @@ def do_rollback(pending):
                                  'Rollback мероприятия', sha=sha)
                     if not ok: success = False
 
-        elif atype == 'edit' and item_id:
-            # При правке откат невозможен без снапшота — сообщаем
-            tg("⚠️ Откат правки не поддерживается. Отредактируй вручную.")
-            pending_clear()
-            return
-
-        elif atype == 'delete' and item_id:
-            tg("⚠️ Откат удаления не поддерживается.")
+        elif atype in ('edit', 'delete', 'move_event'):
+            tg("⚠️ Откат этого действия не поддерживается.")
             pending_clear()
             return
 
