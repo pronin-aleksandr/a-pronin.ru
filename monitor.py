@@ -808,7 +808,36 @@ def propose(item):
 # ── Подтверждение и запись ───────────────────────────────────
 
 def do_confirm(pending, user_comment=''):
-    # Запрашиваем дату перед записью
+    if user_comment and not pending.get('date_confirmed'):
+        tg("✏️ <b>Переделываю через AI...</b>")
+        analysis = pending.get('analysis', {})
+        link = pending.get('link', '')
+        article_text = ''
+        if link:
+            c = fetch_url_content(link)
+            if c:
+                article_text = c[:2000]
+        rework_prompt = (
+            f'Измени карточку материала по инструкции пользователя.\n'
+            f'Заголовок: {analysis.get("title","")}\n'
+            f'Описание: {analysis.get("description","")}\n'
+            f'Инструкция: {user_comment}\n'
+            + (f'Содержимое статьи:\n{article_text}\n' if article_text else '') +
+            'Ответь СТРОГО в JSON без markdown: {"title": "...", "description": "...", "suggestion": "..."}'
+        )
+        result = claude(rework_prompt, max_tokens=500)
+        if result:
+            parsed = parse_json(result)
+            if parsed:
+                for k in ('title','description','suggestion'):
+                    if parsed.get(k):
+                        pending['analysis'][k] = parsed[k]
+                save_json(PENDING_FILE, pending)
+                _send_proposal(pending)
+                return
+        tg("⚠️ AI не ответил, показываю без изменений.")
+        _send_proposal(pending)
+        return
     analysis = pending.get('analysis', {})
     found_date = analysis.get('news_date', '') or (
         analysis.get('event_day','') + ' ' + analysis.get('event_month','') + ' ' + analysis.get('event_year','')
