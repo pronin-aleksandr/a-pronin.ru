@@ -1919,7 +1919,7 @@ function renderNewsList(containerId, items, toggleClass) {
     const container = document.getElementById(containerId);
     if (!container || !items) return;
     const years = groupNewsByYear(items);
-    const months = {янв:1,фев:2,мар:3,апр:4,май:5,июн:6,июл:7,авг:8,сен:9,окт:10,ноя:11,дек:12};
+    const months = {янв:1,января:1,фев:2,февраля:2,мар:3,марта:3,апр:4,апреля:4,май:5,мая:5,июн:6,июня:6,июл:7,июля:7,авг:8,августа:8,сен:9,сентября:9,окт:10,октября:10,ноя:11,ноября:11,дек:12,декабря:12};
     // Сортируем внутри каждого года: новые сверху
     Object.keys(years).forEach(year => {
         years[year].sort((a, b) => {
@@ -1968,7 +1968,7 @@ function renderPastEvents(containerId, items, toggleClass) {
     // Сортируем внутри каждого года: новые сверху
     Object.keys(years).forEach(year => {
         years[year].sort((a, b) => {
-            const months = {янв:1,фев:2,мар:3,апр:4,май:5,июн:6,июл:7,авг:8,сен:9,окт:10,ноя:11,дек:12};
+            const months = {янв:1,января:1,фев:2,февраля:2,мар:3,марта:3,апр:4,апреля:4,май:5,мая:5,июн:6,июня:6,июл:7,июля:7,авг:8,августа:8,сен:9,сентября:9,окт:10,октября:10,ноя:11,ноября:11,дек:12,декабря:12};
             const da = parseInt(a.day||0), db = parseInt(b.day||0);
             const ma = months[(a.month||'').toLowerCase()] || 0;
             const mb = months[(b.month||'').toLowerCase()] || 0;
@@ -1993,7 +1993,7 @@ function renderPastEvents(containerId, items, toggleClass) {
 }
 
 function autoMovePastEvents(section) {
-    const MONTHS = {янв:1,фев:2,мар:3,апр:4,май:5,июн:6,июл:7,авг:8,сен:9,окт:10,ноя:11,дек:12};
+    const MONTHS = {янв:1,января:1,фев:2,февраля:2,мар:3,марта:3,апр:4,апреля:4,май:5,мая:5,июн:6,июня:6,июл:7,июля:7,авг:8,августа:8,сен:9,сентября:9,окт:10,октября:10,ноя:11,ноября:11,дек:12,декабря:12};
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const upcoming = section.upcoming || [];
@@ -2018,7 +2018,7 @@ function autoMovePastEvents(section) {
 }
 
 function autoMovePastEvents(section) {
-    const MONTHS = {янв:1,фев:2,мар:3,апр:4,май:5,июн:6,июл:7,авг:8,сен:9,окт:10,ноя:11,дек:12};
+    const MONTHS = {янв:1,января:1,фев:2,февраля:2,мар:3,марта:3,апр:4,апреля:4,май:5,мая:5,июн:6,июня:6,июл:7,июля:7,авг:8,августа:8,сен:9,сентября:9,окт:10,октября:10,ноя:11,ноября:11,дек:12,декабря:12};
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const upcoming = section.upcoming || [];
