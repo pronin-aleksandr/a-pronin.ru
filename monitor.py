@@ -826,8 +826,10 @@ def do_confirm(pending, user_comment=''):
             'Ответь СТРОГО в JSON без markdown: {"title": "...", "description": "...", "suggestion": "..."}'
         )
         result = claude(rework_prompt, max_tokens=500)
+        print(f"rework result: {result[:200] if result else 'None'}")
         if result:
             parsed = parse_json(result)
+            print(f"rework parsed: {parsed}")
             if parsed:
                 for k in ('title','description','suggestion'):
                     if parsed.get(k):
@@ -1120,7 +1122,7 @@ def process_commands():
                 '/help — эта справка'
             )
 
-        elif tl.startswith('отредактируй') or tl.startswith('измени описание') or tl.startswith('редактируй'):
+        elif (tl.startswith('отредактируй') or tl.startswith('измени описание') or tl.startswith('редактируй')) and not pending:
             lines_edit = text.strip().split('\n')
             first_line = lines_edit[0]
             # Новое описание — всё после первой строки, объединённое
