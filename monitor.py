@@ -761,6 +761,10 @@ def propose_one(item):
     if title or description:
         preview = f"\n\n📋 <b>Как будет выглядеть:</b>\n<b>{title}</b>\n<i>{description}</i>"
 
+    confirm_btns = {'inline_keyboard': [[
+        {'text': '✅ ДА', 'callback_data': 'confirm_yes'},
+        {'text': '❌ НЕТ', 'callback_data': 'confirm_no'}
+    ]]}
     tg(
         f"🤖 <b>Клод предлагает</b>\n\n"
         f"📌 <b>Источник:</b> {source}\n"
@@ -768,36 +772,41 @@ def propose_one(item):
         f"\n💡 <b>Предложение:</b>\n{result.get('suggestion','')}\n\n"
         f"<b>Разместить в:</b>\n{places}"
         + preview
-        + queue_note +
-        f"\n\n✅ <b>ДА</b>  |  ❌ <b>НЕТ</b>  |  ✏️ <i>или напиши/надиктуй правки</i>"
+        + queue_note,
+        reply_markup=confirm_btns
     )
-    # Проверяем дату
-    found_date = result.get('news_date', '') or (
-        result.get('event_day','') + ' ' + result.get('event_month','') + ' ' + result.get('event_year','')
-    ).strip()
-
-    if found_date:
-        # Дата найдена — показываем её и просим подтвердить
-        date_btns = {'inline_keyboard': [[
-            {'text': f'✅ {found_date}', 'callback_data': f'date_confirm_{found_date}'},
-            {'text': '✏️ Ввести вручную', 'callback_data': 'date_manual'}
-        ]]}
-        tg(f"📅 <b>Дата материала:</b> {found_date}\n\nПодтверди или введи вручную:", reply_markup=date_btns)
-        pending_save(text, link, found_date, source, result, prev_sha, status='waiting_date')
-    else:
-        # Дата не найдена — спрашиваем
-        today = datetime.now().strftime('%d %B %Y')
-        date_btns = {'inline_keyboard': [[
-            {'text': f'📅 Сегодня ({date})', 'callback_data': f'date_confirm_{date}'},
-            {'text': '✏️ Ввести вручную', 'callback_data': 'date_manual'}
-        ]]}
-        tg(f"📅 <b>Дата не найдена.</b> Укажи дату публикации:", reply_markup=date_btns)
-        pending_save(text, link, date, source, result, prev_sha, status='waiting_date')
+    pending_save(text, link, date, source, result, prev_sha)
 
 
 # ── Подтверждение и запись ───────────────────────────────────
 
 def do_confirm(pending, user_comment=''):
+    # Запрашиваем дату перед записью
+    analysis = pending.get('analysis', {})
+    found_date = analysis.get('news_date', '') or (
+        analysis.get('event_day','') + ' ' + analysis.get('event_month','') + ' ' + analysis.get('event_year','')
+    ).strip()
+    current_date = pending.get('date', '')
+
+    # Если дата ещё не подтверждена пользователем
+    if not pending.get('date_confirmed'):
+        if found_date:
+            date_btns = {'inline_keyboard': [[
+                {'text': f'✅ {found_date}', 'callback_data': f'date_confirm_{found_date}'},
+                {'text': '✏️ Ввести вручную', 'callback_data': 'date_manual'}
+            ]]}
+            tg(f"📅 <b>Дата материала:</b> <b>{found_date}</b>\n\nПодтверди или введи вручную:", reply_markup=date_btns)
+        else:
+            date_btns = {'inline_keyboard': [[
+                {'text': f'📅 Сегодня ({current_date})', 'callback_data': f'date_confirm_{current_date}'},
+                {'text': '✏️ Ввести вручную', 'callback_data': 'date_manual'}
+            ]]}
+            tg(f"📅 <b>Дата не найдена в статье.</b> Укажи дату публикации:", reply_markup=date_btns)
+        pending['status'] = 'waiting_date'
+        pending['user_comment'] = user_comment
+        save_json(PENDING_FILE, pending)
+        return
+
     tg("⚙️ <b>Добавляю в базу сайта...</b>")
 
     # Если пользователь уточнил placement в комментарии — переопределяем
@@ -944,8 +953,10 @@ def process_commands():
                 elif cb_data == 'date_manual' and pending and pending.get('status') == 'waiting_date':
                     tg("✏️ Введи дату вручную в формате: <b>31 мая 2026</b>")
                 elif cb_data == 'confirm_yes' and pending and pending['status'] == 'waiting_confirm':
+                    tg("✅ ДА")
                     do_confirm(pending)
                 elif cb_data == 'confirm_no' and pending and pending['status'] == 'waiting_confirm':
+                    tg("❌ НЕТ")
                     pending_clear()
                     tg("⏭ Пропущено.")
                     # Сначала приоритетная очередь
