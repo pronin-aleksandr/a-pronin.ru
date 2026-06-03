@@ -1225,7 +1225,20 @@ def do_rollback(pending):
         ok = snapshot_restore()
         if ok:
             pending_clear()
-            tg(f"✅ <b>Откат выполнен!</b>\n🔗 {SITE_URL}")
+            action  = pending.get('action', {})
+            section = action.get('section', '')
+            atype   = action.get('type', '')
+            ANCHORS = {
+                'consulting': {'news': '#news-consulting', 'events': '#events-consulting'},
+                'drone':      {'news': '#news-drone',      'events': '#events-drone'},
+            }
+            if 'news' in atype:
+                anchor = ANCHORS.get(section, {}).get('news', '')
+            elif 'event' in atype:
+                anchor = ANCHORS.get(section, {}).get('events', '')
+            else:
+                anchor = ANCHORS.get(section, {}).get('news', '') or ANCHORS.get(section, {}).get('events', '')
+            tg(f"✅ <b>Откат выполнен!</b>\n🔗 {SITE_URL}{anchor}")
         else:
             tg("❌ Не удалось откатить — снапшот недоступен.")
         return
