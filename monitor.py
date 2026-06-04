@@ -273,7 +273,7 @@ def claude(prompt, max_tokens=2000):
     try:
         print(f"Gemini: отправляю запрос ({len(prompt)} символов)...")
         r = requests.post(
-            f'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key={GEMINI_KEY}',
+            f'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key={GEMINI_KEY}',
             headers={'content-type': 'application/json'},
             json={
                 'contents': [{'parts': [{'text': prompt}]}],
@@ -996,12 +996,57 @@ def gemini_dialog(user_text, url_content=''):
 # ── Единая карточка предложения ──────────────────────────────
 
 def show_proposal(reply, action):
-    """Показывает карточку с кнопками ДА/НЕТ."""
+    """Показывает карточку с кнопками ДА/НЕТ.
+    Карточка строится из action.data — фиксированный формат."""
     buttons = {'inline_keyboard': [[
         {'text': '✅ ДА', 'callback_data': 'confirm_yes'},
         {'text': '❌ НЕТ', 'callback_data': 'confirm_no'},
     ]]}
-    tg(reply, reply_markup=buttons)
+
+    card_text = None
+    if action and action.get('data'):
+        data    = action['data']
+        atype   = action.get('type', '')
+        section = action.get('section', '')
+
+        section_label = PLACEMENT_LABELS.get(
+            f"{'news' if 'news' in atype else 'events'}-{section}", ''
+        )
+
+        title = data.get('title', '')
+        desc  = data.get('text', '') or data.get('description', '')
+        link  = data.get('link', '')
+
+        if atype == 'add_news':
+            date = data.get('date', '')
+        elif atype == 'add_event':
+            day   = data.get('day', '')
+            month = data.get('month', '')
+            year  = data.get('year', '')
+            date  = f"{day} {month} {year}".strip()
+        else:
+            date = ''
+
+        lines = ['🤖 <b>Предложение</b>\n']
+        if section_label:
+            lines.append(f'💡 Разместить в: <b>{section_label}</b>\n')
+        lines.append('<b>📋 Как будет выглядеть:</b>')
+        if title: lines.append(f'<b>{title}</b>')
+        if desc:  lines.append(desc)
+        if date:  lines.append(f'📅 {date}')
+        if link:  lines.append(f'🔗 {link}')
+
+        card_text = '\n'.join(lines)
+
+    text_to_send = card_text if card_text else reply
+
+    if card_text and reply:
+        for line in reply.split('\n'):
+            if '📋' in line:
+                text_to_send += f'\n{line}'
+                break
+
+    tg(text_to_send, reply_markup=buttons)
 
 
 def show_done(site_link, queue_note=''):
@@ -1184,18 +1229,20 @@ def execute_action(action):
             obj, sha = read_json_file(filepath)
             if obj is None: continue
             found = False
+            found_sec = ''
+            anchor_pfx = 'news' if filepath == NEWS_FILE else 'events'
             for sec, val in obj.items():
                 if isinstance(val, list):
                     before = len(val); obj[sec] = [x for x in val if str(x.get('id')) != item_id]
-                    if len(obj[sec]) < before: found = True; break
+                    if len(obj[sec]) < before: found = True; found_sec = sec; break
                 elif isinstance(val, dict):
                     for etype, items in val.items():
                         before = len(items); val[etype] = [x for x in items if str(x.get('id')) != item_id]
-                        if len(val[etype]) < before: found = True; break
+                        if len(val[etype]) < before: found = True; found_sec = sec; break
                 if found: break
             if found:
                 ok = write_json_file(filepath, obj, f"Удаление id={item_id}", sha)
-                return ok, SITE_URL
+                return ok, SITE_URL + ANCHORS.get(f'{anchor_pfx}-{found_sec}', '')
 
     elif atype == 'move_event':
         item_id  = str(action.get('id') or data.get('id', ''))
@@ -1276,7 +1323,14 @@ def do_rollback(pending):
 
     if success:
         pending_clear()
-        tg(f"✅ <b>Откат выполнен!</b>\n🔗 {SITE_URL}")
+        anchor = ''
+        if placements:
+            p = placements[0]
+            if p.startswith('news-'):
+                anchor = f'#news-{p.replace("news-", "")}'
+            elif p.startswith('events-'):
+                anchor = f'#events-{p.replace("events-", "")}'
+        tg(f"✅ <b>Откат выполнен!</b>\n🔗 {SITE_URL}{anchor}")
     else:
         tg("❌ Ошибка отката.")
 
