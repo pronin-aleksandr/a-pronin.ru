@@ -709,7 +709,10 @@ def pending_save(text, link, date, source, analysis, prev_sha, status='waiting_c
     })
 
 def pending_load():
-    return load_json(PENDING_FILE, None)
+    data = load_json(PENDING_FILE, None)
+    if not data:  # None или пустой dict {}
+        return None
+    return data
 
 def pending_clear():
     if os.path.exists(PENDING_FILE):
