@@ -326,7 +326,7 @@ def parse_json(text):
 
 # ── Очередь найденных материалов ────────────────────────────
 
-def queue_add(text, link, source):
+def queue_add(text, link, source, post_date=''):
     """Добавляет материал в очередь."""
     q = load_json(QUEUE_FILE, [])
     # Не добавляем дубликаты
@@ -339,6 +339,7 @@ def queue_add(text, link, source):
         'text': text,
         'link': link,
         'source': source,
+        'post_date': post_date,
         'added': datetime.now().isoformat()
     })
     save_json(QUEUE_FILE, q)
@@ -387,14 +388,13 @@ def manual_queue_len():
 
 
 def fetch_vk_post(url):
-    """Получает текст поста ВКонтакте через VK API."""
+    """Получает текст и дату поста ВКонтакте через VK API.
+    Возвращает (text, post_date) или (None, None)."""
     try:
-        # Извлекаем owner_id и post_id из ссылки
-        # Форматы: vk.com/wall-200393_2308, vk.ru/wall-200393_2308
         import re
         match = re.search(r'wall(-?\d+)_(\d+)', url)
         if not match:
-            return None
+            return None, None
         owner_id = match.group(1)
         post_id  = match.group(2)
 
@@ -406,7 +406,7 @@ def fetch_vk_post(url):
         data = r.json()
         if 'error' in data:
             print(f"VK API ошибка: {data['error']}")
-            return None
+            return None, None
         response = data.get('response', {})
         if isinstance(response, dict):
             items = response.get('items', [])
@@ -415,22 +415,35 @@ def fetch_vk_post(url):
         else:
             items = []
         if items:
-            text = items[0].get('text', '') if isinstance(items[0], dict) else ''
+            post = items[0] if isinstance(items[0], dict) else {}
+            text = post.get('text', '')
 
-            print(f"fetch_vk_post: получено {len(text)} символов")
-            return text[:3000] if text else None
-        return None
+            # Дата поста из Unix timestamp
+            post_date = ''
+            if post.get('date'):
+                from datetime import datetime as dt
+                MONTHS = ['января','февраля','марта','апреля','мая','июня',
+                          'июля','августа','сентября','октября','ноября','декабря']
+                d = dt.fromtimestamp(post['date'])
+                post_date = f"{d.day} {MONTHS[d.month-1]} {d.year}"
+
+            print(f"fetch_vk_post: получено {len(text)} символов, дата поста: {post_date}")
+            return (text[:3000] if text else None), post_date
+        return None, None
     except Exception as e:
         print(f"fetch_vk_post ошибка: {e}")
-        return None
+        return None, None
 
 def fetch_url_content(url):
     """Читает содержимое страницы по ссылке."""
     # Для ВКонтакте используем API
     if 'vk.com' in url or 'vk.ru' in url:
         if 'wall' in url:
-            vk_text = fetch_vk_post(url)
+            vk_text, vk_date = fetch_vk_post(url)
             if vk_text:
+                # Добавляем дату поста в текст чтобы Gemini мог её использовать
+                if vk_date:
+                    return f"[Дата публикации поста: {vk_date}]\n\n{vk_text}"
                 return vk_text
 
     try:
@@ -530,6 +543,7 @@ def analyze_batch(items):
   Источник: {item['source']}
   Текст от пользователя: {item['text'][:300]}
   Ссылка: {item.get('link') or 'нет'}
+  Дата публикации поста: {item.get('post_date') or 'неизвестна'}
   Содержимое по ссылке: {url_content[:1000] if url_content else 'не удалось загрузить'}
 {section_hint}
 """
@@ -557,7 +571,7 @@ def analyze_batch(items):
     "placements": [],
     "title": "ОБЯЗАТЕЛЬНО: краткий заголовок материала на русском (из содержимого ссылки, не из команды пользователя)",
     "description": "ОБЯЗАТЕЛЬНО: описание 1-2 предложения на русском (из содержимого ссылки)",
-    "news_date": "дата публикации новости из содержимого статьи в формате ДД месяц ГГГГ на русском, например: 31 мая 2026. Если дата не найдена — пустая строка.",
+    "news_date": "дата публикации новости в формате ДД месяц ГГГГ на русском, например: 31 мая 2026. Ищи дату в содержимом статьи. Если в тексте нет даты — используй 'Дата публикации поста' из данных материала. Если и её нет — пустая строка.",
     "event_day": "день числом или диапазон типа 28-29 (только для мероприятий)",
     "event_month": "месяц сокращённо на русском: янв/фев/мар/апр/май/июн/июл/авг/сен/окт/ноя/дек (только для мероприятий)",
     "event_year": "год четырьмя цифрами (только для мероприятий)"
@@ -1704,10 +1718,22 @@ def get_vk_data(screen_name):
         if 'error' in wall:
             return None
         posts = wall.get('response', {}).get('items', [])
-        return [
-            {'text': p['text'], 'link': f"https://vk.com/wall{oid}_{p['id']}"}
-            for p in posts if p.get('text', '').strip()
-        ], oid
+        MONTHS = ['января','февраля','марта','апреля','мая','июня',
+                  'июля','августа','сентября','октября','ноября','декабря']
+        result = []
+        for p in posts:
+            if not p.get('text', '').strip():
+                continue
+            post_date = ''
+            if p.get('date'):
+                d = datetime.fromtimestamp(p['date'])
+                post_date = f"{d.day} {MONTHS[d.month-1]} {d.year}"
+            result.append({
+                'text': p['text'],
+                'link': f"https://vk.com/wall{oid}_{p['id']}",
+                'post_date': post_date
+            })
+        return result, oid
     except Exception as e:
         print(f"ВК ошибка {screen_name}: {e}")
         return None
@@ -1772,7 +1798,8 @@ def process_vk(page, state):
         if found:
             # При первом сканировании добавляем только первый пост
             queue_add(found[0]['text'], found[0]['link'],
-                      f"ВК vk.com/{name} ({page['section']})")
+                      f"ВК vk.com/{name} ({page['section']})",
+                      post_date=found[0].get('post_date', ''))
 
     elif h != state[key].get('hash'):
         state[key]['hash']    = h
@@ -1781,7 +1808,8 @@ def process_vk(page, state):
         new_posts = [p for p in found if p['link'] not in prev_links]
         for post in new_posts:
             queue_add(post['text'], post['link'],
-                      f"ВК vk.com/{name} ({page['section']})")
+                      f"ВК vk.com/{name} ({page['section']})",
+                      post_date=post.get('post_date', ''))
         state[key]['seen_links'] = [p['link'] for p in found[:50]]
     else:
         state[key]['checked'] = datetime.now().isoformat()
