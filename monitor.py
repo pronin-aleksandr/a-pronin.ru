@@ -1423,6 +1423,7 @@ def auto_accept_if_expired():
         if elapsed >= AUTO_ACCEPT_MINUTES:
             print(f"auto_accept: прошло {elapsed:.0f} мин — принимаю автоматически")
             pending_clear()
+            tg(f"👍 Принято автоматически (прошло {elapsed:.0f} мин)")
             analyzed = load_json(ANALYZED_FILE, [])
             if analyzed:
                 next_item = analyzed.pop(0)
@@ -1586,6 +1587,13 @@ def process_commands():
 
         # ── Всё остальное — в Gemini ──
         dialog_add('user', text)
+
+        # Если pending в статусе done и пришёл новый материал — считаем принятым
+        if pending and pending.get('status') == 'done':
+            pending_clear()
+            tg("👍 Предыдущее принято.")
+
+        pending = pending_load()
 
         # Текстовое да/нет при ожидании подтверждения
         if pending and pending.get('status') == 'dialog_confirm':
