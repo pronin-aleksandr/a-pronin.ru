@@ -1802,6 +1802,11 @@ if __name__ == '__main__':
     if '--commands-only' in sys.argv:
         print(f"=== Команды {__import__('datetime').datetime.now().strftime('%d.%m.%Y %H:%M')} ===")
         process_commands()
+        # Если есть материалы в очереди и нет активного pending — обрабатываем
+        if queue_len() > 0 or len(load_json(ANALYZED_FILE, [])) > 0:
+            if pending_load() is None:
+                print("Очередь не пуста — обрабатываю...")
+                process_queue_batch()
         print("=== Готово ===")
     else:
         run()
