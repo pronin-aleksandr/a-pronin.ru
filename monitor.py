@@ -1720,7 +1720,8 @@ def process_queue_batch():
 # ── Главная ─────────────────────────────────────────────────
 
 def run():
-    print(f"=== Запуск {datetime.now().strftime('%d.%m.%Y %H:%M')} ===")
+    now = datetime.now().strftime('%d.%m.%Y %H:%M')
+    print(f"=== Запуск {now} ===")
 
     # 1. Обрабатываем сообщения пользователя
     process_commands()
@@ -1730,23 +1731,34 @@ def run():
     if pending and pending.get('status') in ('waiting_confirm', 'done'):
         print("Есть pending — мониторинг пропускаю")
     else:
-        state = load_json(STATE_FILE, {})
+        tg(f"🔍 <b>Запускаю мониторинг</b> — {now}\nПроверяю сайты и ВКонтакте...")
+
+        state      = load_json(STATE_FILE, {})
+        new_found  = 0
 
         for page in WEB_PAGES:
             print(f"Веб: {page['url']}")
+            before = queue_len()
             process_web(page, state)
+            new_found += queue_len() - before
 
         if VK_TOKEN:
             for page in VK_PAGES:
                 print(f"ВК: vk.com/{page['screen_name']}")
+                before = queue_len()
                 process_vk(page, state)
+                new_found += queue_len() - before
         else:
             print("VK_TOKEN не задан")
 
         save_json(STATE_FILE, state)
 
+        if new_found > 0:
+            tg(f"📥 Найдено новых упоминаний: <b>{new_found}</b>. Анализирую...")
+        else:
+            tg(f"✅ <b>Мониторинг завершён</b> — новых упоминаний нет.")
+
         # 3. Пакетный анализ очереди и показ первого результата
-        # Только если нет ожидающего подтверждения
         if pending_load() is None:
             process_queue_batch()
 
