@@ -995,9 +995,8 @@ def gemini_dialog(user_text, url_content=''):
 
 # ── Единая карточка предложения ──────────────────────────────
 
-def show_proposal(reply, action):
-    """Показывает карточку с кнопками ДА/НЕТ.
-    Карточка строится из action.data — фиксированный формат."""
+def show_proposal(reply, action, pending=None):
+    """Показывает карточку с кнопками ДА/НЕТ. Фиксированный формат."""
     buttons = {'inline_keyboard': [[
         {'text': '✅ ДА', 'callback_data': 'confirm_yes'},
         {'text': '❌ НЕТ', 'callback_data': 'confirm_no'},
@@ -1013,9 +1012,14 @@ def show_proposal(reply, action):
             f"{'news' if 'news' in atype else 'events'}-{section}", ''
         )
 
-        title = data.get('title', '')
-        desc  = data.get('text', '') or data.get('description', '')
-        link  = data.get('link', '')
+        title  = data.get('title', '')
+        desc   = data.get('text', '') or data.get('description', '')
+        link   = data.get('link', '')
+        source = ''
+        if pending:
+            source = pending.get('source', '')
+        if not source:
+            source = data.get('source', '')
 
         if atype == 'add_news':
             date = data.get('date', '')
@@ -1027,23 +1031,25 @@ def show_proposal(reply, action):
         else:
             date = ''
 
-        lines = ['🤖 <b>Предложение</b>\n']
+        lines = ['🤖 <b>Клод предлагает</b>\n']
+        if source: lines.append(f'📌 Источник: {source}')
+        if link:   lines.append(f'🔗 Ссылка: {link}')
+        if date:   lines.append(f'📅 Дата: {date}')
         if section_label:
-            lines.append(f'💡 Разместить в: <b>{section_label}</b>\n')
-        lines.append('<b>📋 Как будет выглядеть:</b>')
+            lines.append(f'\n💡 Предложение: разместить в <b>{section_label}</b>\n')
+        lines.append('📋 <b>Как будет выглядеть:</b>')
         if title: lines.append(f'<b>{title}</b>')
-        if desc:  lines.append(desc)
-        if date:  lines.append(f'📅 {date}')
-        if link:  lines.append(f'🔗 {link}')
+        if desc:  lines.append(f'<i>{desc}</i>')
 
         card_text = '\n'.join(lines)
 
     text_to_send = card_text if card_text else reply
 
+    # Добавляем заметку об очереди если есть
     if card_text and reply:
         for line in reply.split('\n'):
-            if '📋' in line:
-                text_to_send += f'\n{line}'
+            if '📋' in line and 'очереди' in line:
+                text_to_send += f'\n\n{line}'
                 break
 
     tg(text_to_send, reply_markup=buttons)
@@ -1386,6 +1392,7 @@ def propose(item):
         'status':    'dialog_confirm',
         'reply':     reply,
         'action':    action,
+        'source':    source,
         'user_text': user_msg,
         'created':   datetime.now().isoformat()
     })
@@ -1395,7 +1402,7 @@ def propose(item):
     q_len    = queue_len() + len(analyzed)
     queue_note = f"\n\n📋 <i>Ещё в очереди: {q_len}</i>" if q_len > 0 else ""
 
-    show_proposal(reply + queue_note, action)
+    show_proposal(reply + queue_note, action, pending=load_json(PENDING_FILE, None))
 
 
 # ── Новый process_commands ───────────────────────────────────
@@ -1625,10 +1632,11 @@ def process_commands():
                 'status':    'dialog_confirm',
                 'reply':     reply,
                 'action':    action,
+                'source':    'Вручную от пользователя',
                 'user_text': text,
                 'created':   datetime.now().isoformat()
             })
-            show_proposal(reply, action)
+            show_proposal(reply, action, pending=load_json(PENDING_FILE, None))
         else:
             pending_clear()
             tg(reply)
