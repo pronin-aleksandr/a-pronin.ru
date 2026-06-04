@@ -1499,7 +1499,34 @@ def process_commands():
                 tg("⏭ Отменено.")
                 dialog_add('bot', 'Действие отменено.')
                 continue
-            # Иначе — уточнение, идём дальше в Gemini
+            # Иначе — уточнение к карточке
+            # Если карточка — add_news или add_event, применяем правку к самой карточке
+            action = pending.get('action', {})
+            if action.get('type') in ('add_news', 'add_event'):
+                tg("🤔 <b>Переделываю карточку...</b>")
+                card_prompt = f"""Есть предложение добавить запись:
+{json.dumps(action, ensure_ascii=False, indent=2)}
+
+Пользователь хочет внести правку: "{text}"
+
+Верни обновлённый action с теми же полями но с исправлениями.
+Отвечай СТРОГО в JSON без markdown:
+{{"reply": "текст подтверждения правки", "show_confirm": true, "action": {{...обновлённый action...}}}}"""
+                result = parse_json(claude(card_prompt, max_tokens=600))
+                if result and result.get('action'):
+                    reply = result.get('reply', '')
+                    dialog_add('bot', reply)
+                    save_json(PENDING_FILE, {
+                        'status':    'dialog_confirm',
+                        'reply':     reply,
+                        'action':    result['action'],
+                        'user_text': text,
+                        'created':   datetime.now().isoformat()
+                    })
+                    show_proposal(reply, result['action'])
+                else:
+                    tg("❌ Не смог применить правку. Попробуй ещё раз.")
+                continue
 
         # Читаем ссылку если есть
         urls        = re.findall(r'https?://\S+', text)
