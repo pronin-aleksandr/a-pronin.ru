@@ -1794,7 +1794,7 @@ def run():
             tg(f"✅ <b>Мониторинг завершён</b> — новых упоминаний нет.")
 
         # 3. Пакетный анализ очереди и показ первого результата
-        if pending_load() is None:
+        if not pending_load():
             process_queue_batch()
 
     print("=== Готово ===")
@@ -1807,7 +1807,7 @@ if __name__ == '__main__':
         process_commands()
         # Если есть материалы в очереди и нет активного pending — обрабатываем
         if queue_len() > 0 or len(load_json(ANALYZED_FILE, [])) > 0:
-            if pending_load() is None:
+            if not pending_load():
                 print("Очередь не пуста — обрабатываю...")
                 process_queue_batch()
         print("=== Готово ===")
