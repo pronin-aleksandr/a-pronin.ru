@@ -1880,7 +1880,7 @@ def run():
 
     # 2. Мониторинг — добавляет новые материалы в очередь
     pending = pending_load()
-    if pending and pending.get('status') in ('waiting_confirm', 'done'):
+    if pending and pending.get('status') in ('waiting_confirm', 'done', 'dialog_confirm', 'waiting_date'):
         print("Есть pending — мониторинг пропускаю")
     else:
         tg(f"🔍 <b>Запускаю мониторинг</b> — {now}\nПроверяю сайты и ВКонтакте...")
@@ -1923,8 +1923,9 @@ if __name__ == '__main__':
         print(f"=== Команды {__import__('datetime').datetime.now().strftime('%d.%m.%Y %H:%M')} ===")
         process_commands()
         # Если есть материалы в очереди и нет активного pending — обрабатываем
+        pending = pending_load()
         if queue_len() > 0 or len(load_json(ANALYZED_FILE, [])) > 0:
-            if not pending_load():
+            if not pending or pending.get('status') not in ('waiting_confirm', 'done', 'dialog_confirm', 'waiting_date'):
                 print("Очередь не пуста — обрабатываю...")
                 process_queue_batch()
         print("=== Готово ===")
