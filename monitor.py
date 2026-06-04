@@ -1405,9 +1405,41 @@ def propose(item):
     show_proposal(reply + queue_note, action, pending=load_json(PENDING_FILE, None))
 
 
+# ── Автопринятие ─────────────────────────────────────────────
+
+AUTO_ACCEPT_MINUTES = 210  # 3.5 часа
+
+def auto_accept_if_expired():
+    """Если pending в статусе done больше 210 минут — принимаем автоматически."""
+    pending = pending_load()
+    if not pending or pending.get('status') != 'done':
+        return
+    created = pending.get('created', '')
+    if not created:
+        return
+    try:
+        created_dt = datetime.fromisoformat(created)
+        elapsed = (datetime.now() - created_dt).total_seconds() / 60
+        if elapsed >= AUTO_ACCEPT_MINUTES:
+            print(f"auto_accept: прошло {elapsed:.0f} мин — принимаю автоматически")
+            pending_clear()
+            analyzed = load_json(ANALYZED_FILE, [])
+            if analyzed:
+                next_item = analyzed.pop(0)
+                save_json(ANALYZED_FILE, analyzed)
+                propose(next_item)
+            else:
+                manual_item = manual_queue_pop()
+                if manual_item:
+                    propose(manual_item)
+    except Exception as e:
+        print(f"auto_accept ошибка: {e}")
+
+
 # ── Новый process_commands ───────────────────────────────────
 
 def process_commands():
+    auto_accept_if_expired()
     last_id = get_last_uid()
     updates = get_updates(offset=(last_id + 1) if last_id else None)
 
