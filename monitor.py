@@ -1809,7 +1809,11 @@ def process_queue_batch():
         item = analyzed.pop(0)
         save_json(ANALYZED_FILE, analyzed)
         if item.get('skip'):
-            # Уже на сайте — берём следующий
+            # Уже на сайте — уведомляем и берём следующий
+            reason = item.get('reason', '')
+            title  = item.get('title', item.get('text', '')[:60])
+            tg(f"ℹ️ <b>Пропущено</b> — уже на сайте:\n<i>{title}</i>"
+               + (f"\n{reason}" if reason else ""))
             process_queue_batch()
             return
         propose(item)
