@@ -1000,13 +1000,14 @@ def show_proposal(reply, action):
 
 
 def show_done(site_link, queue_note=''):
-    """Показывает сообщение об успехе с кнопкой отката."""
-    rollback_btn = {'inline_keyboard': [[
-        {'text': '↩️ Откатить', 'callback_data': 'confirm_rollback'}
+    """Показывает сообщение об успехе с кнопками отката и подтверждения."""
+    buttons = {'inline_keyboard': [[
+        {'text': '↩️ Откатить', 'callback_data': 'confirm_rollback'},
+        {'text': '👍 Принято',  'callback_data': 'confirm_done'},
     ]]}
     tg(
         f"✅ <b>Готово! Сайт обновлён.</b>\n\n🔗 {site_link}{queue_note}",
-        reply_markup=rollback_btn
+        reply_markup=buttons
     )
 
 
