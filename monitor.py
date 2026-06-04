@@ -1409,7 +1409,18 @@ def process_commands():
                 elif cb_data == 'date_manual' and pending and pending.get('status') == 'waiting_date':
                     tg("✏️ Введи дату вручную: <b>31 мая 2026</b>")
                 elif cb_data == 'confirm_done' and pending and pending.get('status') == 'done':
-                    pending_clear(); tg("👍 Принято.")
+                    pending_clear()
+                    tg("👍 Принято.")
+                    # Показываем следующий материал из очереди если есть
+                    analyzed = load_json(ANALYZED_FILE, [])
+                    if analyzed:
+                        next_item = analyzed.pop(0)
+                        save_json(ANALYZED_FILE, analyzed)
+                        propose(next_item)
+                    else:
+                        manual_item = manual_queue_pop()
+                        if manual_item:
+                            propose(manual_item)
             continue
 
         msg = upd.get('message', {})
