@@ -1282,27 +1282,29 @@ def do_rollback(pending):
 
 def propose(item):
     """Единая точка входа для показа предложения.
-    Используется и мониторингом, и ручным вводом."""
+    Мониторинг и ручной ввод используют один и тот же путь."""
     text   = item.get('text', '')
     link   = item.get('link', '')
     source = item.get('source', '')
 
     tg("🔍 <b>Анализирую...</b>")
 
+    # Читаем ссылку — точно так же как при ручном вводе
     url_content = ''
     if link:
         url_content = fetch_url_content(link) or ''
 
-    # Формируем сообщение для Gemini как будто пользователь прислал материал
-    user_msg = f"Материал из мониторинга.\nИсточник: {source}\nТекст: {text[:500]}"
+    # Формируем сообщение точно как при ручном вводе ссылки
     if link:
-        user_msg += f"\nСсылка: {link}"
+        user_msg = link
+    else:
+        user_msg = text[:500]
 
+    # Вызываем gemini_dialog — та же функция что при ручном вводе
     result = gemini_dialog(user_msg, url_content=url_content)
 
     if not result:
         tg("❌ Ошибка анализа. Пропускаю.")
-        # Берём следующий из очереди
         analyzed = load_json(ANALYZED_FILE, [])
         if analyzed:
             next_item = analyzed.pop(0)
@@ -1322,7 +1324,7 @@ def propose(item):
             propose(next_item)
         return
 
-    # Сохраняем pending и показываем карточку
+    # Сохраняем pending и показываем карточку — та же логика что в process_commands
     save_json(PENDING_FILE, {
         'status':    'dialog_confirm',
         'reply':     reply,
