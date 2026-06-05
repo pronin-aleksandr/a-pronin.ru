@@ -1050,6 +1050,30 @@ def show_proposal(reply, action, pending=None):
         atype   = action.get('type', '')
         section = action.get('section', '')
 
+        # Для edit — загружаем существующую запись и накладываем изменения
+        if atype == 'edit':
+            item_id = str(action.get('id') or data.get('id', ''))
+            existing = {}
+            existing_file = NEWS_FILE
+            for filepath in [NEWS_FILE, EVENTS_FILE]:
+                raw, _ = gh_read(filepath)
+                if not raw: continue
+                obj = json.loads(raw)
+                for sec, val in obj.items():
+                    items = val if isinstance(val, list) else []
+                    if isinstance(val, dict):
+                        items = val.get('upcoming', []) + val.get('past', [])
+                    for it in items:
+                        if str(it.get('id')) == item_id:
+                            existing = it
+                            existing_file = filepath
+                            break
+                if existing: break
+            # Накладываем изменения поверх существующей записи
+            merged = {**existing, **{k: v for k, v in data.items() if k != 'id'}}
+            data = merged
+            atype = 'add_news' if existing_file == NEWS_FILE else 'add_event'
+
         # Для edit — загружаем существующую запись чтобы показать контекст
         if atype == 'edit':
             item_id = str(action.get('id') or data.get('id', ''))
