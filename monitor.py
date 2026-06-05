@@ -1882,6 +1882,10 @@ def process_queue_batch():
 
     if not analyzed_items:
         print("process_queue_batch: все материалы уже на сайте")
+        # Уведомляем в Telegram
+        for item in batch:
+            title = item.get('title', item.get('text', '')[:60])
+            tg(f"ℹ️ <b>Пропущено</b> — уже на сайте:\n<i>{title}</i>")
         # Если ещё есть в очереди — обрабатываем следующий пакет
         if rest:
             process_queue_batch()
