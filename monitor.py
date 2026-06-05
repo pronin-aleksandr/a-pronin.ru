@@ -1557,6 +1557,25 @@ def auto_accept_if_expired():
 
 def process_commands():
     auto_accept_if_expired()
+
+    # Файл-лок чтобы не запускать два экземпляра одновременно
+    import fcntl
+    lock_file = open('/tmp/monitor_commands.lock', 'w')
+    try:
+        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        print("process_commands: уже запущен, пропускаю")
+        lock_file.close()
+        return
+
+    try:
+        _process_commands_inner()
+    finally:
+        fcntl.flock(lock_file, fcntl.LOCK_UN)
+        lock_file.close()
+
+
+def _process_commands_inner():
     last_id = get_last_uid()
     updates = get_updates(offset=(last_id + 1) if last_id else None)
 
