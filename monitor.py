@@ -12,6 +12,32 @@ import re
 import tempfile
 from datetime import datetime
 import base64
+import logging
+from logging.handlers import TimedRotatingFileHandler
+
+# ── Логирование ──────────────────────────────────────────────
+LOG_FILE = 'data/monitor.log'
+os.makedirs('data', exist_ok=True)
+
+_log_handler = TimedRotatingFileHandler(
+    LOG_FILE, when='D', interval=1, backupCount=7, encoding='utf-8'
+)
+_log_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
+_log_handler.suffix = '%Y-%m-%d'
+
+_console_handler = logging.StreamHandler()
+_console_handler.setFormatter(logging.Formatter('%(message)s'))
+
+logging.basicConfig(level=logging.INFO, handlers=[_log_handler, _console_handler])
+log = logging.getLogger('monitor')
+
+# Перехватываем print → log
+import builtins
+_orig_print = builtins.print
+def _log_print(*args, **kwargs):
+    msg = ' '.join(str(a) for a in args)
+    log.info(msg)
+builtins.print = _log_print
 
 # ── Конфиг ──────────────────────────────────────────────────
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
