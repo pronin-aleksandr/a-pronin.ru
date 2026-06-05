@@ -1035,6 +1035,21 @@ body { font-family: 'Lora', serif; overflow-x: hidden; }
   background: var(--accent, #c84b2f);
   color: #fff;
 }
+/* VMV Modal */
+#vmv-modal { display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.85); overflow-y:auto; padding:40px 20px; }
+#vmv-modal.open { display:flex; align-items:flex-start; justify-content:center; }
+.vmv-modal-box { background:#0f1923; border:1px solid rgba(200,168,75,0.3); max-width:900px; width:100%; padding:36px; position:relative; }
+.vmv-modal-close { position:absolute; top:16px; right:20px; font-size:22px; color:var(--c-gold); cursor:pointer; background:none; border:none; line-height:1; }
+.vmv-modal-close:hover { color:#fff; }
+.vmv-modal-title { font-family:'Lora',serif; font-size:18px; color:#fff; margin-bottom:4px; }
+.vmv-modal-sub { font-size:12px; letter-spacing:2px; text-transform:uppercase; color:rgba(200,168,75,0.7); margin-bottom:28px; }
+.vmv-episode { display:flex; align-items:center; gap:20px; text-decoration:none; padding:16px 0; border-bottom:1px solid rgba(200,168,75,0.12); transition:background .15s; }
+.vmv-episode:last-child { border-bottom:none; }
+.vmv-episode:hover .vmv-ep-name { color:var(--c-gold); }
+.vmv-ep-thumb { width:160px; height:90px; flex-shrink:0; background:#060e17; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; }
+.vmv-ep-thumb .d-play-btn, .vmv-ep-thumb .play-btn { position:absolute; }
+.vmv-ep-name { font-family:'Lora',serif; font-size:20px; color:#fff; transition:color .2s; }
+.vmv-ep-label { font-size:11px; letter-spacing:1px; text-transform:uppercase; color:rgba(200,168,75,0.6); margin-top:4px; }
 </style>
 </head>
 <body>
@@ -1197,7 +1212,77 @@ body { font-family: 'Lora', serif; overflow-x: hidden; }
 <div class="sec-header"><span class="sec-num">06</span><h2 class="sec-title">Видео</h2></div>
 <div class="videos-grid">
 <a class="video-card" href="https://www.youtube.com/watch?v=qtLjuda3hM8" target="_blank"><div class="video-thumb"><span class="vid-platform">YouTube</span><div class="play-btn"><svg viewbox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg></div></div><span class="vid-title">Интервью: Александр Пронин о корпоративном обучении</span></a>
-<a class="video-card" href="https://rutube.ru/video/6073e01f687582be60572f99f4182ffe/" target="_blank"><div class="video-thumb"><span class="vid-platform">Rutube</span><div class="play-btn"><svg viewbox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg></div></div><span class="vid-title">Видеоподкаст «Вместе всё возможно» | 20-летие BITOBE</span></a>
+<div class="video-card" style="cursor:pointer" onclick="document.getElementById('vmv-modal').classList.add('open');document.body.style.overflow='hidden'">
+  <div class="video-thumb" style="background:linear-gradient(135deg,#0f1923 60%,rgba(200,168,75,0.15))">
+    <span class="vid-platform">Серия · 6 эпизодов</span>
+    <div class="play-btn" style="border-color:var(--c-gold)"><svg viewbox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg></div>
+    <div style="position:absolute;bottom:8px;left:10px;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:rgba(200,168,75,0.7)">Нажмите, чтобы открыть</div>
+  </div>
+  <span class="vid-title">Серия видеоинтервью «Вместе всё возможно. Архитектура консалтинга будущего» | 20-летие BITOBE</span>
+</div>
+
+<!-- Модальное окно серии -->
+<div id="vmv-modal" onclick="if(event.target===this){this.classList.remove('open');document.body.style.overflow=''}">
+  <div class="vmv-modal-box">
+    <button class="vmv-modal-close" onclick="document.getElementById('vmv-modal').classList.remove('open');document.body.style.overflow=''">✕</button>
+    <div class="vmv-modal-title">«Вместе всё возможно. Архитектура консалтинга будущего»</div>
+    <div class="vmv-modal-sub">20-летие BITOBE · Серия видеоинтервью · Александр Пронин — интервьюер</div>
+    <a class="vmv-episode" href="https://vkvideo.ru/video-200393_456239295" target="_blank">
+      <div class="vmv-ep-thumb">
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px">
+          <div style="font-size:15px;font-weight:700;color:#fff;text-align:center;padding:0 8px">Ярослава Васильева</div>
+          <div class="play-btn" style="position:static;width:32px;height:32px"><svg viewbox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg></div>
+        </div>
+      </div>
+      <div><div class="vmv-ep-name">Ярослава Васильева</div><div class="vmv-ep-label">VK Video</div></div>
+    </a>
+    <a class="vmv-episode" href="https://vkvideo.ru/video-200393_456239293" target="_blank">
+      <div class="vmv-ep-thumb">
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px">
+          <div style="font-size:15px;font-weight:700;color:#fff;text-align:center;padding:0 8px">Сергей Бочаров</div>
+          <div class="play-btn" style="position:static;width:32px;height:32px"><svg viewbox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg></div>
+        </div>
+      </div>
+      <div><div class="vmv-ep-name">Сергей Бочаров</div><div class="vmv-ep-label">VK Video</div></div>
+    </a>
+    <a class="vmv-episode" href="https://vkvideo.ru/video-200393_456239292" target="_blank">
+      <div class="vmv-ep-thumb">
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px">
+          <div style="font-size:15px;font-weight:700;color:#fff;text-align:center;padding:0 8px">Кирилл Комаров</div>
+          <div class="play-btn" style="position:static;width:32px;height:32px"><svg viewbox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg></div>
+        </div>
+      </div>
+      <div><div class="vmv-ep-name">Кирилл Комаров</div><div class="vmv-ep-label">VK Video</div></div>
+    </a>
+    <a class="vmv-episode" href="https://vkvideo.ru/video-200393_456239291" target="_blank">
+      <div class="vmv-ep-thumb">
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px">
+          <div style="font-size:15px;font-weight:700;color:#fff;text-align:center;padding:0 8px">Елена Салихова</div>
+          <div class="play-btn" style="position:static;width:32px;height:32px"><svg viewbox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg></div>
+        </div>
+      </div>
+      <div><div class="vmv-ep-name">Елена Салихова</div><div class="vmv-ep-label">VK Video</div></div>
+    </a>
+    <a class="vmv-episode" href="https://vkvideo.ru/video-200393_456239288" target="_blank">
+      <div class="vmv-ep-thumb">
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px">
+          <div style="font-size:15px;font-weight:700;color:#fff;text-align:center;padding:0 8px">Денис Сугаипов</div>
+          <div class="play-btn" style="position:static;width:32px;height:32px"><svg viewbox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg></div>
+        </div>
+      </div>
+      <div><div class="vmv-ep-name">Денис Сугаипов</div><div class="vmv-ep-label">VK Video</div></div>
+    </a>
+    <a class="vmv-episode" href="https://vkvideo.ru/video-200393_456239285" target="_blank">
+      <div class="vmv-ep-thumb">
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px">
+          <div style="font-size:15px;font-weight:700;color:#fff;text-align:center;padding:0 8px">Александр Семёнов</div>
+          <div class="play-btn" style="position:static;width:32px;height:32px"><svg viewbox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg></div>
+        </div>
+      </div>
+      <div><div class="vmv-ep-name">Александр Семёнов</div><div class="vmv-ep-label">VK Video</div></div>
+    </a>
+  </div>
+</div>
 <a class="video-card" href="https://rutube.ru/video/d403af0577babc4c903697aeabc9e6cb/" target="_blank"><div class="video-thumb"><span class="vid-platform">Rutube</span><div class="play-btn"><svg viewbox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg></div></div><span class="vid-title">Ценность корпоративной культуры в работе команды</span></a>
 <a class="video-card" href="https://vkvideo.ru/video-200393_456239295" target="_blank"><div class="video-thumb"><span class="vid-platform">VK Video</span><div class="play-btn"><svg viewbox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg></div></div><span class="vid-title">3 вопроса за 3 минуты: Александр Пронин</span></a>
 <a class="video-card" href="https://vkvideo.ru/video-200393_456239291" target="_blank"><div class="video-thumb"><span class="vid-platform">VK Video</span><div class="play-btn"><svg viewbox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg></div></div><span class="vid-title">Руководители — чему будем учить завтра?</span></a>
