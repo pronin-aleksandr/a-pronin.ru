@@ -1031,6 +1031,7 @@ def gemini_dialog(user_text, url_content=''):
     resp = claude(prompt, max_tokens=800)
     if not resp:
         return None
+    print(f"gemini_dialog ответ: {resp[:500]}")
     return parse_json(resp)
 
 
