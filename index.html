@@ -1654,6 +1654,19 @@ function goBack() {
 window.addEventListener('DOMContentLoaded', function() {
   var hash = window.location.hash.replace('#', '');
   if (hash && document.getElementById(hash)) { showSection(hash); }
+
+  // Перехватываем клики по внутренним якорям профиля — скролл без смены hash
+  document.addEventListener('click', function(e) {
+    var link = e.target.closest('a[href^="#"]');
+    if (!link) return;
+    var targetId = link.getAttribute('href').slice(1);
+    var pageSections = ['consulting','drone','news-consulting','events-consulting','news-drone','events-drone'];
+    if (pageSections.indexOf(targetId) !== -1) return;
+    var target = document.getElementById(targetId);
+    if (!target) return;
+    e.preventDefault();
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
 });
 window.addEventListener('popstate', function() {
   var hash = window.location.hash.replace('#', '');
