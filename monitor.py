@@ -1128,14 +1128,13 @@ def show_proposal(reply, action, pending=None):
             f"{'news' if 'news' in atype else 'events'}-{section}", ''
         )
 
-        title  = data.get('title', '')
-        desc   = data.get('text', '') or data.get('description', '')
-        link   = data.get('link', '')
-        source = ''
+        title       = data.get('title', '')
+        desc        = data.get('text', '') or data.get('description', '')
+        link        = data.get('link', '')
+        site_source = data.get('source', '')  # то что отобразится на сайте
+        from_source = ''
         if pending:
-            source = pending.get('source', '')
-        if not source:
-            source = data.get('source', '')
+            from_source = pending.get('source', '')
 
         if atype == 'add_news':
             date = data.get('date', '')
@@ -1148,14 +1147,15 @@ def show_proposal(reply, action, pending=None):
             date = ''
 
         lines = ['🤖 <b>Клод предлагает</b>\n']
-        if source: lines.append(f'📌 Источник: {source}')
-        if link:   lines.append(f'🔗 Ссылка: {link}')
-        if date:   lines.append(f'📅 Дата: {date}')
+        if from_source:  lines.append(f'📌 Получено от: {from_source}')
+        if link:         lines.append(f'🔗 Ссылка: {link}')
+        if date:         lines.append(f'📅 Дата: {date}')
         if section_label:
             lines.append(f'\n💡 Предложение: разместить в <b>{section_label}</b>\n')
         lines.append('📋 <b>Как будет выглядеть:</b>')
-        if title: lines.append(f'<b>{title}</b>')
-        if desc:  lines.append(f'<i>{desc}</i>')
+        if title:        lines.append(f'<b>{title}</b>')
+        if desc:         lines.append(f'<i>{desc}</i>')
+        if site_source:  lines.append(f'🏷 На сайте: <b>{site_source}</b>')
 
         card_text = '\n'.join(lines)
 
