@@ -1050,6 +1050,56 @@ def show_proposal(reply, action, pending=None):
         atype   = action.get('type', '')
         section = action.get('section', '')
 
+        # Для edit — загружаем существующую запись чтобы показать контекст
+        if atype == 'edit':
+            item_id = str(action.get('id') or data.get('id', ''))
+            existing = None
+            existing_file = None
+            for filepath in [NEWS_FILE, EVENTS_FILE]:
+                raw, _ = gh_read(filepath)
+                if not raw: continue
+                obj = json.loads(raw)
+                for sec, val in obj.items():
+                    items = val if isinstance(val, list) else []
+                    if isinstance(val, dict):
+                        items = val.get('upcoming', []) + val.get('past', [])
+                    for it in items:
+                        if str(it.get('id')) == item_id:
+                            existing = it
+                            existing_file = filepath
+                            break
+                if existing: break
+
+            # Строим карточку из существующей записи + изменения
+            if existing:
+                section_label = PLACEMENT_LABELS.get(
+                    f"{'news' if existing_file == NEWS_FILE else 'events'}-{section}", ''
+                )
+                title  = existing.get('title', '')
+                desc   = existing.get('text', '')
+                link   = existing.get('link', '')
+                source = existing.get('source', '')
+                date   = existing.get('date', '')
+
+                # Показываем что изменится
+                changes = []
+                for k, v in data.items():
+                    if k != 'id':
+                        old_val = existing.get(k, '')
+                        changes.append(f"<b>{k}:</b> {old_val} → {v}")
+
+                lines = ['🤖 <b>Клод предлагает</b>\n']
+                lines.append(f'✏️ Изменить в: <b>{section_label}</b>\n')
+                lines.append('<b>📋 Запись:</b>')
+                if title: lines.append(f'<b>{title}</b>')
+                if changes:
+                    lines.append('\n<b>Изменения:</b>')
+                    lines.extend(changes)
+
+                card_text = '\n'.join(lines)
+                tg(card_text, reply_markup=buttons)
+                return
+
         section_label = PLACEMENT_LABELS.get(
             f"{'news' if 'news' in atype else 'events'}-{section}", ''
         )
