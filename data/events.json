@@ -138,6 +138,18 @@
   "drone": {
     "upcoming": [
       {
+        "id": 1781006903,
+        "section": "drone",
+        "type": "upcoming",
+        "day": 18,
+        "month": "июля",
+        "year": 2026,
+        "title": "Фестиваль «Победа» в Санкт-Петербурге",
+        "text": "Масштабные командные и индивидуальные гонки дронов на стадионе «Петровский» для пилотов от 14 лет.",
+        "link": "https://t.me/droneracingfederation/5046",
+        "link_text": "Регистрация на турнир"
+      },
+      {
         "id": 1780126779,
         "section": "drone",
         "type": "upcoming",
