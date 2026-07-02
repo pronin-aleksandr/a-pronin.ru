@@ -2,10 +2,12 @@
   "consulting": [
     {
       "id": "consulting-blog-2026-06",
+      "section": "consulting",
+      "source": "blog.bitobe.ru",
       "date": "19 июня 2026",
       "title": "Развитие лидеров в компании: как ИИ меняет программы обучения",
-      "url": "https://blog.bitobe.ru/article/pochemu-razvitie-liderov-stanovitsya-glavnym-riskom-dlya-hr-v-epohu-ii/",
-      "section": "consulting"
+      "text": "Александр Пронин рассуждает о том, почему в эпоху ИИ развитие лидеров становится главным стратегическим риском для HR — и как выстроить программы обучения, которые действительно меняют поведение руководителей.",
+      "link": "https://blog.bitobe.ru/article/pochemu-razvitie-liderov-stanovitsya-glavnym-riskom-dlya-hr-v-epohu-ii/"
     },
     {
       "id": 1782257552,
