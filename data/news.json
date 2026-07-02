@@ -1,6 +1,13 @@
 {
   "consulting": [
     {
+      "id": "consulting-blog-2026-06",
+      "date": "19 июня 2026",
+      "title": "Развитие лидеров в компании: как ИИ меняет программы обучения",
+      "url": "https://blog.bitobe.ru/article/pochemu-razvitie-liderov-stanovitsya-glavnym-riskom-dlya-hr-v-epohu-ii/",
+      "section": "consulting"
+    },
+    {
       "id": 1782257552,
       "section": "consulting",
       "source": "BITOBE",
