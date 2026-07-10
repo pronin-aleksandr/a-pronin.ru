@@ -1,6 +1,15 @@
 {
   "consulting": [
     {
+      "id": 1783699462,
+      "section": "consulting",
+      "source": "BITOBE",
+      "date": "10 июля 2026",
+      "title": "Какие управленческие навыки становятся критичными в 2026 году",
+      "text": "Александр Пронин делится размышлениями о роли ИИ в управлении и о том, как руководителям справляться с турбулентностью, сохраняя фокус на поддержке команды.",
+      "link": "https://blog.bitobe.ru/article/kakie-upravlencheskie-navyki-stanovyatsya-kritichnymi-v-2026-godu/"
+    },
+    {
       "id": "consulting-blog-2026-06",
       "section": "consulting",
       "source": "blog.bitobe.ru",
