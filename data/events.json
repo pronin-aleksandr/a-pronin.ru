@@ -2,6 +2,18 @@
   "consulting": {
     "upcoming": [
       {
+        "id": 1785136512,
+        "section": "consulting",
+        "type": "upcoming",
+        "day": 18,
+        "month": "августа",
+        "year": 2026,
+        "title": "Лекторий BITOBE: ИТ-навигатор: управление сложностью",
+        "text": "В ИТ бизнес теряет ценность там, где управление рассыпается на фрагменты. На встрече разберём, как собрать управление в систему — опираясь на осознанно выбранную операционную модель, а не на инерцию прошлого опыта.",
+        "link": "https://bitobe-consulting-group.timepad.ru/event/3978054/?utm_source=bitobe&utm_medium=max&utm_campaign=event",
+        "link_text": "Зарегистрироваться"
+      },
+      {
         "id": 1,
         "section": "consulting",
         "type": "upcoming",
