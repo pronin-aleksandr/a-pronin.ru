@@ -1,6 +1,15 @@
 {
   "consulting": [
     {
+      "id": 1785394865,
+      "section": "consulting",
+      "source": "РБК Компании",
+      "date": "30 июля 2026",
+      "title": "В Лектории BITOBE раскрыли сильные стороны HR-Академии",
+      "text": "Эксперты BITOBE обсудили ключевые преимущества и возможности HR-Академии для развития профессиональных компетенций.",
+      "link": "https://companies.rbc.ru/news/kjmjQOI2kf/v-lektorii-bitobe-raskryili-silnyie-storonyi-hr-akademii/"
+    },
+    {
       "id": 1784713043,
       "section": "consulting",
       "source": "blog.bitobe.ru",
