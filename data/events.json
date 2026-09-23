@@ -2,6 +2,18 @@
   "consulting": {
     "upcoming": [
       {
+        "id": 1790189972,
+        "section": "consulting",
+        "type": "upcoming",
+        "day": 6,
+        "month": "октября",
+        "year": 2026,
+        "title": "Лекторий BITOBE: Бизнес-акселератор – от обучения к реализации стратегии",
+        "text": "Встреча о том, как формат акселератора помогает перевести стратегические инициативы в конкретные проекты и чем он отличается от традиционного обучения.",
+        "link": "https://bitobe-consulting-group.timepad.ru/event/4100166/",
+        "link_text": "Зарегистрироваться"
+      },
+      {
         "id": 1786727242,
         "section": "consulting",
         "type": "upcoming",
