@@ -634,11 +634,38 @@ def analyze(text, link, source):
 
 # ── Генерация обновлённого HTML ─────────────────────────────
 
+def normalize_placements(placements):
+    """Приводит размещения к допустимым: news-consulting, news-drone, events-consulting, events-drone.
+    Gemini иногда возвращает смешанные имена (например, news-consulting_events) — исправляем их."""
+    result = []
+    for p in placements or []:
+        p_low = str(p).strip().lower()
+        kind = 'events' if any(k in p_low for k in ('event', 'мероприят', 'анонс')) else 'news'
+        if 'drone' in p_low or 'дрон' in p_low or 'фгд' in p_low:
+            sec = 'drone'
+        elif 'consult' in p_low or 'консалт' in p_low:
+            sec = 'consulting'
+        else:
+            print(f"normalize_placements: неизвестное размещение {p!r}, пропускаю")
+            continue
+        fixed = f'{kind}-{sec}'
+        if fixed != p:
+            print(f"normalize_placements: {p!r} -> {fixed!r}")
+        if fixed not in result:
+            result.append(fixed)
+    return result
+
+
 def apply_json_edit(text, link, date, placements, user_comment='', analysis=None):
     if analysis is None:
         analysis = {}
     """Добавляет материал в news.json или events.json — без редактирования HTML."""
     success = True
+
+    placements = normalize_placements(placements)
+    if not placements:
+        tg("⚠️ Не удалось определить раздел сайта для материала — ничего не добавлено.")
+        return False
 
     for placement in placements:
         if placement.startswith('news-'):
@@ -821,7 +848,8 @@ def do_confirm(pending, user_comment=''):
     tg("⚙️ <b>Добавляю в базу сайта...</b>")
 
     # Если пользователь уточнил placement в комментарии — переопределяем
-    placements = pending['analysis'].get('placements', [])
+    placements = normalize_placements(pending['analysis'].get('placements', []))
+    pending['analysis']['placements'] = placements
     if user_comment:
         comment_lower = user_comment.lower()
         new_placements = []
